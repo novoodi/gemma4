@@ -132,6 +132,7 @@ private fun SummaryContent(summary: MeetingSummary, modifier: Modifier = Modifie
         SummaryCard(title = "모임 날짜", content = summary.meetingDate)
         SummaryCard(title = "모임 장소", content = summary.location)
         SummaryCard(title = "당일 날씨", content = summary.weather)
+        SummaryCard(title = "참여자 프로필", content = summary.participantProfiles)
         SummaryCard(title = "할 것들", content = summary.activities)
         SummaryCard(title = "챙겨갈 것들", content = summary.whatToBring)
         SummaryCard(title = "가는 방법", content = summary.directions)

@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.example.gemma4.data.SampleData
 import com.example.gemma4.data.model.Message
+import com.example.gemma4.data.model.Participant
 import com.example.gemma4.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -205,9 +206,9 @@ fun ChatScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SenderSelector(
-    currentSender: String,
-    participants: List<String>,
-    onSenderSelected: (String) -> Unit
+    currentSender: Participant,
+    participants: List<Participant>,
+    onSenderSelected: (Participant) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -217,7 +218,7 @@ private fun SenderSelector(
     ) {
         AssistChip(
             onClick = { expanded = !expanded },
-            label = { Text(currentSender) },
+            label = { Text(currentSender.name) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable)
         )
@@ -225,11 +226,11 @@ private fun SenderSelector(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            participants.forEach { name ->
+            participants.forEach { participant ->
                 DropdownMenuItem(
-                    text = { Text(name) },
+                    text = { Text(participant.name) },
                     onClick = {
-                        onSenderSelected(name)
+                        onSenderSelected(participant)
                         expanded = false
                     }
                 )

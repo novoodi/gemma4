@@ -8,6 +8,7 @@ import com.example.gemma4.MoimApp
 import com.example.gemma4.data.SampleData
 import com.example.gemma4.data.model.MeetingSummary
 import com.example.gemma4.data.model.Message
+import com.example.gemma4.data.model.Participant
 import com.example.gemma4.data.repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,9 +37,9 @@ class ChatViewModel(
         .map { rooms -> rooms.find { it.id == roomId } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    val participants: StateFlow<List<String>> = ChatRepository.rooms
-        .map { rooms -> rooms.find { it.id == roomId }?.participants ?: listOf("나") }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("나"))
+    val participants: StateFlow<List<Participant>> = ChatRepository.rooms
+        .map { rooms -> rooms.find { it.id == roomId }?.participants ?: listOf(Participant(name = "나")) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf(Participant(name = "나")))
 
     val messages: StateFlow<List<Message>> = ChatRepository.messages
         .map { it[roomId] ?: emptyList() }
@@ -47,8 +48,8 @@ class ChatViewModel(
     private val _inputText = MutableStateFlow("")
     val inputText: StateFlow<String> = _inputText.asStateFlow()
 
-    private val _currentSender = MutableStateFlow("나")
-    val currentSender: StateFlow<String> = _currentSender.asStateFlow()
+    private val _currentSender = MutableStateFlow(Participant(name = "나"))
+    val currentSender: StateFlow<Participant> = _currentSender.asStateFlow()
 
     private val _summaryState = MutableStateFlow<SummaryState>(SummaryState.Idle)
     val summaryState: StateFlow<SummaryState> = _summaryState.asStateFlow()
@@ -62,19 +63,20 @@ class ChatViewModel(
 
     fun onInputChange(text: String) { _inputText.value = text }
 
-    fun setSender(name: String) { _currentSender.value = name }
+    fun setSender(participant: Participant) { _currentSender.value = participant }
 
     fun sendMessage() {
         val text = _inputText.value.trim()
         if (text.isBlank()) return
         val sender = _currentSender.value
-        val firstParticipant = participants.value.firstOrNull() ?: "나"
+        val firstParticipant = participants.value.firstOrNull()
         ChatRepository.sendMessage(
             Message(
                 roomId = roomId,
-                senderName = sender,
+                senderId = sender.id,
+                senderName = sender.name,
                 content = text,
-                isMe = (sender == firstParticipant)
+                isMe = (sender.id == firstParticipant?.id)
             )
         )
         _inputText.value = ""
@@ -93,7 +95,8 @@ class ChatViewModel(
                     return@launch
                 }
                 llmService.initialize()
-                val result = llmService.runPipeline(roomId, msgs)
+                val currentRoom = ChatRepository.getRoomById(roomId)
+                val result = llmService.runPipeline(roomId, msgs, currentRoom?.participants ?: emptyList())
                 ChatRepository.saveSummary(result)
                 _summaryState.value = SummaryState.Success(result)
             } catch (e: Exception) {
@@ -107,7 +110,7 @@ class ChatViewModel(
     fun loadSampleData(index: Int) {
         val dataset = SampleData.datasets[index]
         ChatRepository.updateRoomParticipants(roomId, dataset.participants)
-        ChatRepository.loadSampleMessages(roomId, dataset.messages, dataset.participants.first())
+        ChatRepository.loadSampleMessages(roomId, dataset.messages, dataset.participants, dataset.participants.first())
         _currentSender.value = dataset.participants.first()
     }
 }

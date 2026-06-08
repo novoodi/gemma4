@@ -8,5 +8,6 @@ data class MeetingSummary(
     val activities: String = "",
     val whatToBring: String = "",
     val weather: String = "",
-    val directions: String = ""
+    val directions: String = "",
+    val participantProfiles: String = ""
 )

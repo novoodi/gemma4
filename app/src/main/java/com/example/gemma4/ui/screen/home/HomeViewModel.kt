@@ -1,6 +1,7 @@
 package com.example.gemma4.ui.screen.home
 
 import androidx.lifecycle.ViewModel
+import com.example.gemma4.data.model.Participant
 import com.example.gemma4.data.repository.ChatRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,7 +18,9 @@ class HomeViewModel : ViewModel() {
     fun hideCreateDialog() { _showCreateDialog.value = false }
 
     fun createRoom(name: String, participants: List<String>) {
-        if (name.isNotBlank()) ChatRepository.createRoom(name.trim(), participants)
+        if (name.isNotBlank()) {
+            ChatRepository.createRoom(name.trim(), participants.map { Participant(name = it) })
+        }
         hideCreateDialog()
     }
 }

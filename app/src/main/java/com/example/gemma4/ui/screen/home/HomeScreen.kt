@@ -105,7 +105,7 @@ fun HomeScreen(
                             if (room.participants.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = room.participants.joinToString(", "),
+                                    text = room.participants.joinToString(", ") { it.name },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

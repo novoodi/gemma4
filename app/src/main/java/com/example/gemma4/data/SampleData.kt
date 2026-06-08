@@ -1,16 +1,31 @@
 package com.example.gemma4.data
 
+import com.example.gemma4.data.model.Participant
+
 object SampleData {
+
+    // 앱 전역에서 동일 인물이 동일 ID를 유지하도록 고정된 참여자 목록
+    val PARTICIPANTS = mapOf(
+        "이승현" to Participant(id = "user_001", name = "이승현"),
+        "양예찬" to Participant(id = "user_002", name = "양예찬"),
+        "차민영" to Participant(id = "user_003", name = "차민영"),
+        "박성민" to Participant(id = "user_004", name = "박성민"),
+        "한수현" to Participant(id = "user_005", name = "한수현"),
+        "성민"   to Participant(id = "user_006", name = "성민"),
+    )
+
+    private fun p(name: String) = PARTICIPANTS[name] ?: Participant(name = name)
+
     data class Dataset(
         val name: String,
-        val participants: List<String>,
-        val messages: List<Pair<String, String>>
+        val participants: List<Participant>,
+        val messages: List<Pair<String, String>>  // (발화자 이름, 내용) — 이름으로 participant 조회
     )
 
     val datasets: List<Dataset> = listOf(
         Dataset(
             name = "익선동 모임",
-            participants = listOf("이승현", "양예찬", "차민영", "박성민", "한수현"),
+            participants = listOf(p("이승현"), p("양예찬"), p("차민영"), p("박성민"), p("한수현")),
             messages = listOf(
                 "이승현" to "여러분 몇시에 어디서 볼까요??",
                 "양예찬" to "4-5시 쯤?",
@@ -123,7 +138,7 @@ object SampleData {
         ),
         Dataset(
             name = "볼링 모임",
-            participants = listOf("이승현", "양예찬", "성민", "박성민", "한수현", "차민영"),
+            participants = listOf(p("이승현"), p("양예찬"), p("성민"), p("박성민"), p("한수현"), p("차민영")),
             messages = listOf(
                 "양예찬" to "6일 안돼?",
                 "양예찬" to "되는날 언제야 다들",
@@ -313,7 +328,7 @@ object SampleData {
         ),
         Dataset(
             name = "홈파티",
-            participants = listOf("이승현", "양예찬", "성민", "박성민", "한수현", "차민영"),
+            participants = listOf(p("이승현"), p("양예찬"), p("성민"), p("박성민"), p("한수현"), p("차민영")),
             messages = listOf(
                 "양예찬" to "자자 홈파뤼 언제 할깝셔",
                 "양예찬" to "되는시간 고고",
@@ -402,6 +417,51 @@ object SampleData {
                 "이승현" to "이모티콘",
                 "박성민" to "미안해 다들........",
                 "박성민" to "사진으로라도 함께할게"
+            )
+        ),
+        Dataset(
+            name = "1차 회식 (충돌 전)",
+            participants = listOf(p("이승현"), p("양예찬"), p("차민영"), p("박성민")),
+            messages = listOf(
+                "이승현" to "이번 회식 어디서 할까~",
+                "양예찬" to "난 술은 안 마실래",
+                "양예찬" to "요즘 속이 안 좋아서ㅠ",
+                "이승현" to "오키 무알콜로 가자",
+                "차민영" to "나도 술 안 마셔",
+                "차민영" to "운전해야 돼서",
+                "박성민" to "난 한 잔 정도는 ㄱㅊ",
+                "양예찬" to "장소는 좀 조용한 데로 하자",
+                "양예찬" to "저번에 너무 시끄러워서 대화가 안 됐어",
+                "이승현" to "ㅋㅋㅋ 맞아 조용한 곳 ㄱㄱ",
+                "차민영" to "나는 매운 거 못 먹는 거 알지?",
+                "차민영" to "마라탕 이런 건 패스ㅠㅠ",
+                "이승현" to "기억하고 있엉~",
+                "박성민" to "그럼 깔끔한 한식집 어때",
+                "양예찬" to "조아",
+                "이승현" to "조용한 한식집으로 알아볼게",
+                "양예찬" to "굿굿"
+            )
+        ),
+        Dataset(
+            name = "2차 회식 (충돌 후)",
+            participants = listOf(p("이승현"), p("양예찬"), p("차민영"), p("박성민")),
+            messages = listOf(
+                "이승현" to "오늘 회식 ㄱㄱ",
+                "양예찬" to "오늘은 나 술 마실래!",
+                "양예찬" to "속도 다 나았고 오랜만에 달리자ㅋㅋ",
+                "이승현" to "오 웬일 ㅋㅋㅋㅋ",
+                "박성민" to "양예찬 술 마신다니 신기하네ㅋㅋ",
+                "양예찬" to "그리고 오늘은 시끄러운 데 가도 돼",
+                "양예찬" to "활기찬 데서 신나게 놀자",
+                "차민영" to "나도 오늘은 한 잔 할래",
+                "차민영" to "대리 부르면 되니까",
+                "이승현" to "다들 웬일이야 ㅋㅋㅋㅋㅋㅋ",
+                "차민영" to "그리고 나 요즘 매운 거 잘 먹어",
+                "차민영" to "마라탕 완전 빠졌어ㅋㅋ",
+                "이승현" to "오 마라탕집 갈까 그럼",
+                "박성민" to "ㄱㄱ 시끄러운 마라탕집 ㅋㅋ",
+                "양예찬" to "조아조아 술도 되는 데로",
+                "이승현" to "활기찬 마라탕집으로 예약할게~"
             )
         )
     )
