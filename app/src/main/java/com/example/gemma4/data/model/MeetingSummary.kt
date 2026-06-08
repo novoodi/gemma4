@@ -5,9 +5,7 @@ data class MeetingSummary(
     val summary: String = "",
     val location: String = "",
     val meetingDate: String = "",
-    val activities: String = "",
-    val whatToBring: String = "",
+    val recommendation: String = "",
     val weather: String = "",
-    val directions: String = "",
-    val participantProfiles: String = ""
+    val directions: String = ""
 )

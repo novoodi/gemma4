@@ -1,5 +1,6 @@
 package com.example.gemma4.ui.screen.summary
 
+import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,20 +24,26 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import com.example.gemma4.MoimApp
 import com.example.gemma4.data.model.CalendarEvent
 import com.example.gemma4.data.model.MeetingSummary
 import com.example.gemma4.data.repository.CalendarRepository
@@ -43,8 +52,13 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-class SummaryViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
+class SummaryViewModel(
+    application: Application,
+    savedStateHandle: SavedStateHandle
+) : AndroidViewModel(application) {
+
     private val roomId: String = checkNotNull(savedStateHandle["roomId"])
+    private val feedbackRepository = (application as MoimApp).llmService.feedbackRepository
 
     val summary = ChatRepository.summaries
         .map { it[roomId] }
@@ -62,10 +76,15 @@ class SummaryViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
                 title = roomName,
                 date = s.meetingDate,
                 location = s.location,
-                note = s.activities,
+                note = s.recommendation,
                 roomId = roomId
             )
         )
+    }
+
+    fun submitFeedback(feedback: String) {
+        if (feedback.isBlank()) return
+        feedbackRepository.append(feedback = feedback, roomId = roomId)
     }
 }
 
@@ -77,6 +96,7 @@ fun SummaryScreen(
 ) {
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val isAddedToCalendar by viewModel.isAddedToCalendar.collectAsStateWithLifecycle()
+    var showFeedbackDialog by remember { mutableStateOf(false) }
 
     val canAddToCalendar = summary?.meetingDate?.let { it.isNotEmpty() && it != "미정" } ?: false
 
@@ -114,13 +134,31 @@ fun SummaryScreen(
                 CircularProgressIndicator()
             }
         } else {
-            SummaryContent(summary = summary!!, modifier = Modifier.padding(padding))
+            SummaryContent(
+                summary = summary!!,
+                modifier = Modifier.padding(padding),
+                onFeedbackClick = { showFeedbackDialog = true }
+            )
         }
+    }
+
+    if (showFeedbackDialog) {
+        FeedbackDialog(
+            onDismiss = { showFeedbackDialog = false },
+            onSubmit = { feedback ->
+                viewModel.submitFeedback(feedback)
+                showFeedbackDialog = false
+            }
+        )
     }
 }
 
 @Composable
-private fun SummaryContent(summary: MeetingSummary, modifier: Modifier = Modifier) {
+private fun SummaryContent(
+    summary: MeetingSummary,
+    modifier: Modifier = Modifier,
+    onFeedbackClick: () -> Unit
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -132,11 +170,61 @@ private fun SummaryContent(summary: MeetingSummary, modifier: Modifier = Modifie
         SummaryCard(title = "모임 날짜", content = summary.meetingDate)
         SummaryCard(title = "모임 장소", content = summary.location)
         SummaryCard(title = "당일 날씨", content = summary.weather)
-        SummaryCard(title = "참여자 프로필", content = summary.participantProfiles)
-        SummaryCard(title = "할 것들", content = summary.activities)
-        SummaryCard(title = "챙겨갈 것들", content = summary.whatToBring)
+        SummaryCard(title = "AI 추천 (장소 / 활동 / 준비물)", content = summary.recommendation)
         SummaryCard(title = "가는 방법", content = summary.directions)
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Button(
+            onClick = onFeedbackClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("모임 후기 남기기")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
     }
+}
+
+@Composable
+private fun FeedbackDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit
+) {
+    var text by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("모임 후기") },
+        text = {
+            Column {
+                Text(
+                    text = "이번 모임은 어떠셨나요? 다음 추천에 반영됩니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = { Text("예: 조용하고 분위기 좋았어 / 주차가 너무 불편했어") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onSubmit(text) },
+                enabled = text.isNotBlank()
+            ) {
+                Text("저장")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        }
+    )
 }
 
 @Composable
