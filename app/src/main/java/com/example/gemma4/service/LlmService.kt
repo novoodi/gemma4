@@ -2,6 +2,7 @@ package com.example.gemma4.service
 
 import android.content.Context
 import android.util.Log
+import com.example.gemma4.data.local.UserStatusEntity
 import com.example.gemma4.data.model.MeetingSummary
 import com.example.gemma4.data.model.Message
 import com.example.gemma4.data.model.Participant
@@ -10,6 +11,8 @@ import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Instant
@@ -25,6 +28,7 @@ class LlmService(private val context: Context) {
 
     private var engine: Engine? = null
     private var activeConversation: Any? = null
+    private val engineMutex = Mutex()
     val feedbackRepository = FeedbackRepository(context)
     private val geminiService = GeminiService()
 
@@ -54,11 +58,48 @@ class LlmService(private val context: Context) {
         closeConversation(conv)
     }
 
+    suspend fun compressChatToStatus(messages: List<Message>): String = engineMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val eng = checkNotNull(engine) { "엔진이 초기화되지 않았습니다" }
+            val transcript = messages.joinToString("\n") { "[${it.senderName}]: ${it.content}" }
+
+            val prompt = """
+아래 채팅 로그를 분석하여 반드시 아래 JSON 포맷으로만 출력하라.
+설명, 마크다운 기호, JSON 외 추가 텍스트를 절대 포함하지 마라.
+
+출력 포맷:
+{
+  "participants": ["참석자 이름1", "참석자 이름2"],
+  "preferences": ["좋아요: 조용한 카페", "싫어요: 시끄러운 술집", "선호: 이탈리안 음식"],
+  "availability": ["토요일 오후 가능", "주중 저녁 불가", "다음 주 금요일 확정"]
+}
+
+규칙:
+- participants: 대화에 등장하는 모든 참석자 이름 목록
+- preferences: 음식, 장소, 분위기 등 선호/불호 항목. "좋아요:", "싫어요:" 접두사를 붙여라.
+- availability: 가능/불가능한 날짜, 요일, 시간대
+
+채팅 로그:
+$transcript
+""".trimIndent()
+
+            val conv = eng.createConversation()
+            try {
+                val result = conv.sendMessage(prompt).toString()
+                Log.d("LlmService", "압축 결과 raw: $result")
+                result
+            } finally {
+                closeConversation(conv)
+            }
+        }
+    }
+
     suspend fun runPipeline(
         roomId: String,
         messages: List<Message>,
-        roomParticipants: List<Participant> = emptyList()
-    ): MeetingSummary {
+        roomParticipants: List<Participant> = emptyList(),
+        userStatus: UserStatusEntity? = null
+    ): MeetingSummary = engineMutex.withLock {
         val eng = checkNotNull(engine) { "엔진이 초기화되지 않았습니다" }
 
         closeActiveConversation()
@@ -119,12 +160,14 @@ class LlmService(private val context: Context) {
         // ── Gemini: RAG 기반 장소/활동 추천 ────────────────────────────────
         val ragContext = feedbackRepository.buildRagContext()
         Log.d("LlmService", "RAG context (${ragContext.length}자):\n$ragContext")
+        Log.d("LlmService", "UserStatus 주입: $userStatus")
         val recommendation = geminiService.recommend(
             summary = summary,
             location = location,
             date = meetingDate,
             city = city,
-            ragContext = ragContext
+            ragContext = ragContext,
+            userStatus = userStatus
         )
 
         val weather = WeatherService.getWeather(city, meetingDate)

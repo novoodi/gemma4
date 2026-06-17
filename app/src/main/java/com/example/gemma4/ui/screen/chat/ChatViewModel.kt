@@ -1,15 +1,19 @@
 package com.example.gemma4.ui.screen.chat
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.example.gemma4.MoimApp
 import com.example.gemma4.data.SampleData
+import com.example.gemma4.data.local.UserStatusEntity
 import com.example.gemma4.data.model.MeetingSummary
 import com.example.gemma4.data.model.Message
 import com.example.gemma4.data.model.Participant
 import com.example.gemma4.data.repository.ChatRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 sealed class SummaryState {
     data object Idle : SummaryState()
@@ -31,7 +36,12 @@ class ChatViewModel(
 ) : AndroidViewModel(application) {
 
     private val llmService = (application as MoimApp).llmService
+    private val userStatusRepository = (application as MoimApp).userStatusRepository
     val roomId: String = checkNotNull(savedStateHandle["roomId"])
+
+    companion object {
+        private const val COMPRESSION_TRIGGER_COUNT = 10
+    }
 
     val room = ChatRepository.rooms
         .map { rooms -> rooms.find { it.id == roomId } }
@@ -53,6 +63,8 @@ class ChatViewModel(
 
     private val _summaryState = MutableStateFlow<SummaryState>(SummaryState.Idle)
     val summaryState: StateFlow<SummaryState> = _summaryState.asStateFlow()
+
+    private var compressionJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -80,6 +92,54 @@ class ChatViewModel(
             )
         )
         _inputText.value = ""
+
+        val updatedMessages = ChatRepository.messages.value[roomId] ?: return
+        if (updatedMessages.size % COMPRESSION_TRIGGER_COUNT == 0) {
+            triggerStatusCompression(updatedMessages.toList())
+        }
+    }
+
+    private fun triggerStatusCompression(msgs: List<Message>) {
+        compressionJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                if (!llmService.isModelAvailable) return@launch
+                llmService.initialize()
+                val json = llmService.compressChatToStatus(msgs)
+                val entity = parseUserStatus(json)
+                if (entity != null) {
+                    userStatusRepository.upsert(entity)
+                    Log.d("ChatViewModel", "UserStatus 업데이트 완료 roomId=$roomId")
+                }
+            } catch (e: Exception) {
+                Log.e("ChatViewModel", "상태 압축 실패", e)
+            }
+        }
+    }
+
+    private fun parseUserStatus(json: String): UserStatusEntity? {
+        return try {
+            val raw = Regex("""\{[\s\S]*\}""").find(json)?.value ?: json
+            val jsonStr = raw
+                .replace(Regex(""",\s*]"""), "]")
+                .replace(Regex(""",\s*\}"""), "}")
+            val obj = JSONObject(jsonStr)
+
+            fun arr(key: String): List<String> {
+                val a = obj.optJSONArray(key) ?: return emptyList()
+                return (0 until a.length()).map { a.getString(it) }
+            }
+
+            UserStatusEntity(
+                roomId = roomId,
+                participants = arr("participants"),
+                preferences = arr("preferences"),
+                availability = arr("availability"),
+                lastUpdated = System.currentTimeMillis()
+            )
+        } catch (e: Exception) {
+            Log.e("ChatViewModel", "UserStatus JSON 파싱 실패: $json", e)
+            null
+        }
     }
 
     fun summarize() {
@@ -88,6 +148,7 @@ class ChatViewModel(
         viewModelScope.launch {
             _summaryState.value = SummaryState.Loading
             try {
+                compressionJob?.join()  // 압축이 진행 중이면 완료까지 대기
                 if (!llmService.isModelAvailable) {
                     _summaryState.value = SummaryState.Error(
                         "모델 파일을 찾을 수 없습니다.\n\n다음 경로에 파일을 넣어주세요:\n${llmService.modelPath}"
@@ -96,7 +157,13 @@ class ChatViewModel(
                 }
                 llmService.initialize()
                 val currentRoom = ChatRepository.getRoomById(roomId)
-                val result = llmService.runPipeline(roomId, msgs, currentRoom?.participants ?: emptyList())
+                val userStatus = userStatusRepository.getStatus(roomId)
+                Log.d("ChatViewModel", "summarize 시작 — userStatus: $userStatus")
+                val result = llmService.runPipeline(
+                    roomId, msgs,
+                    currentRoom?.participants ?: emptyList(),
+                    userStatus
+                )
                 ChatRepository.saveSummary(result)
                 _summaryState.value = SummaryState.Success(result)
             } catch (e: Exception) {
@@ -112,5 +179,10 @@ class ChatViewModel(
         ChatRepository.updateRoomParticipants(roomId, dataset.participants)
         ChatRepository.loadSampleMessages(roomId, dataset.messages, dataset.participants, dataset.participants.first())
         _currentSender.value = dataset.participants.first()
+
+        val loadedMessages = ChatRepository.messages.value[roomId] ?: return
+        if (loadedMessages.isNotEmpty()) {
+            triggerStatusCompression(loadedMessages.toList())
+        }
     }
 }
