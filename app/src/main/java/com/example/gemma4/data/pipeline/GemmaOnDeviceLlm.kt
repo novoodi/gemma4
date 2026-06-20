@@ -9,4 +9,9 @@ class GemmaOnDeviceLlm(private val llmService: LlmService) : OnDeviceLlmPort {
         llmService.initialize()
         return llmService.compressChatToStatus(messages)
     }
+
+    override suspend fun summarizeForPrivacy(messages: List<Message>): String {
+        llmService.initialize()
+        return llmService.summarizeForPrivacy(messages)
+    }
 }

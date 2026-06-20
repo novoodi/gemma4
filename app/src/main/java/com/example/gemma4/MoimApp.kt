@@ -31,9 +31,11 @@ class MoimApp : Application() {
     // Phase 3: 오케스트레이터 + Guardrail 하네스
     val guardrailService: GuardrailService by lazy { GuardrailService() }
     val agentOrchestrator: AgentOrchestrator by lazy {
+        val llmPort = if (llmService.isModelAvailable) GemmaOnDeviceLlm(llmService) else MockOnDeviceLlm()
         AgentOrchestrator(
             guardrailService = guardrailService,
-            feedbackRepository = feedbackRepository
+            feedbackRepository = feedbackRepository,
+            onDeviceLlm = llmPort
         )
     }
 }

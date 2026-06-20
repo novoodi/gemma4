@@ -125,14 +125,12 @@ class ChatViewModel(
             try {
                 compressionJob?.join()  // 진행 중인 압축 완료 대기
 
-                val currentRoom = ChatRepository.getRoomById(roomId)
                 val userStatus = userStatusRepository.getStatus(roomId)
                 Log.d(TAG, "orchestrate 시작 — roomId=$roomId userStatus=$userStatus")
 
                 when (val result = agentOrchestrator.orchestrate(
                     roomId = roomId,
                     messages = msgs,
-                    roomParticipants = currentRoom?.participants ?: emptyList(),
                     userStatus = userStatus
                 )) {
                     is OrchestratorResult.Success -> {

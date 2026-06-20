@@ -5,7 +5,7 @@ import com.example.gemma4.BuildConfig
 import com.example.gemma4.data.local.UserStatusEntity
 import com.example.gemma4.data.model.MeetingSummary
 import com.example.gemma4.data.model.Message
-import com.example.gemma4.data.model.Participant
+import com.example.gemma4.data.pipeline.OnDeviceLlmPort
 import com.example.gemma4.data.repository.FeedbackRepository
 import com.google.genai.Client
 import com.google.genai.types.Content
@@ -29,16 +29,18 @@ sealed class OrchestratorResult {
 /**
  * 온디바이스-클라우드 하이브리드 하네스의 통제실.
  *
- * 루프 흐름:
- *   1) Gemini에 시스템 프롬프트 전송
- *   2) Function Calling 처리 (getWeather / searchPlace)
- *   3) GuardrailService 팩트 체크
- *   4) 실패 시 피드백을 컨텍스트에 누적 후 최대 [MAX_ATTEMPTS]회 재시도
- *   5) 통과한 결과만 [OrchestratorResult.Success]로 반환
+ * 프라이버시 방화벽 흐름:
+ *   1) onDeviceLlm.summarizeForPrivacy() — 채팅 원문을 디바이스 내에서 익명화 요약
+ *   2) 요약문만 Gemini에 전송 (채팅 원문은 절대 클라우드로 나가지 않음)
+ *   3) Gemini Function Calling 처리 (getWeather / searchPlace)
+ *   4) GuardrailService 팩트 체크
+ *   5) 실패 시 피드백을 컨텍스트에 누적 후 최대 [MAX_ATTEMPTS]회 재시도
+ *   6) 통과한 결과만 [OrchestratorResult.Success]로 반환
  */
 class AgentOrchestrator(
     private val guardrailService: GuardrailService,
     private val feedbackRepository: FeedbackRepository,
+    private val onDeviceLlm: OnDeviceLlmPort,
     private val apiKey: String = BuildConfig.GEMINI_API_KEY
 ) {
     companion object {
@@ -116,14 +118,17 @@ class AgentOrchestrator(
     suspend fun orchestrate(
         roomId: String,
         messages: List<Message>,
-        roomParticipants: List<Participant>,
         userStatus: UserStatusEntity?,
         chatDate: LocalDate = LocalDate.now()
     ): OrchestratorResult = withContext(Dispatchers.IO) {
 
-        val transcript = buildTranscript(messages, roomParticipants)
+        // 채팅 원문은 온디바이스에서 익명화 — 이 결과만 클라우드로 전송
+        Log.d(TAG, "Gemma 1차 요약 시작 (온디바이스)")
+        val gemmaSum = onDeviceLlm.summarizeForPrivacy(messages)
+        Log.d(TAG, "Gemma 요약 완료: ${gemmaSum.take(80)}")
+
         val ragContext = feedbackRepository.buildRagContext()
-        val basePrompt = buildSystemPrompt(transcript, chatDate, userStatus, ragContext)
+        val basePrompt = buildSystemPrompt(gemmaSum, chatDate, userStatus, ragContext)
 
         var attempt = 0
         var accumulatedFeedback = ""
@@ -285,16 +290,8 @@ class AgentOrchestrator(
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
-    private fun buildTranscript(messages: List<Message>, participants: List<Participant>): String {
-        val idToName = participants.associateBy { it.id }
-        return messages.joinToString("\n") { msg ->
-            val name = idToName[msg.senderId]?.name ?: msg.senderName
-            "[$name]: ${msg.content}"
-        }
-    }
-
     private fun buildSystemPrompt(
-        transcript: String,
+        gemmaSum: String,
         chatDate: LocalDate,
         userStatus: UserStatusEntity?,
         ragContext: String
@@ -309,22 +306,23 @@ class AgentOrchestrator(
         val ragSection = if (ragContext.isNotBlank()) "\n[과거 피드백 이력]\n$ragContext" else ""
 
         return """
-당신은 모임 AI 비서입니다. 아래 채팅 로그를 분석해 장소·활동·날씨 기반 추천을 제공하세요.
+당신은 모임 AI 비서입니다. 아래 Gemma 1차 요약문(개인정보 제거됨)을 바탕으로 장소·활동·날씨 기반 추천을 제공하세요.
 필요하다면 getWeather, searchPlace 도구를 호출해 실시간 정보를 수집하세요.
 
 [대화 날짜] $chatDate
 $profileSection
 $ragSection
 
-[채팅 로그]
-$transcript
+[Gemma 1차 요약]
+$gemmaSum
 
 [지침]
-1. getWeather 도구로 모임 날짜와 도시의 날씨를 반드시 조회하세요
-2. searchPlace 도구로 후보 장소를 검색하세요
-3. 장소 2~3곳, 활동 2~3가지, 챙겨갈 것 3~5가지를 추천하세요
-4. 별표·샵·대괄호 등 마크다운 기호 없이 일반 텍스트로만 답하세요
-5. 참가자 프로필의 선호/불호와 일정 제약을 엄격히 반영하세요
+1. 요약문에서 모임 날짜를 파악하고 반드시 YYYY-MM-DD 형식으로 변환하세요. 대화 날짜($chatDate)를 기준으로 상대적 표현("이번 토요일" 등)을 절대 날짜로 계산하세요.
+2. getWeather 도구로 모임 날짜와 도시의 날씨를 반드시 조회하세요.
+3. searchPlace 도구로 후보 장소를 검색하세요.
+4. 장소 2~3곳, 활동 2~3가지, 챙겨갈 것 3~5가지를 추천하세요.
+5. 별표·샵·대괄호 등 마크다운 기호 없이 일반 텍스트로만 답하세요.
+6. 참가자 프로필의 선호/불호와 일정 제약을 엄격히 반영하세요.
 """.trimIndent()
     }
 

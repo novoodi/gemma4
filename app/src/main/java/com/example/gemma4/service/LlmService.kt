@@ -94,6 +94,29 @@ $transcript
         }
     }
 
+    suspend fun summarizeForPrivacy(messages: List<Message>): String = engineMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val eng = checkNotNull(engine) { "엔진이 초기화되지 않았습니다" }
+            val contentOnly = messages.joinToString("\n") { it.content }
+
+            val prompt = """
+다음 채팅 내용을 읽고, 개인정보(이름, 연락처 등)가 포함되지 않은 2~3문장의 요약문을 작성하라.
+요약문에는 날짜(또는 요일), 대략적인 장소, 모임 목적을 반드시 포함해야 한다.
+참가자 이름은 절대 언급하지 말고, 별표·샵·대괄호 같은 마크다운 기호 없이 일반 텍스트로만 출력하라.
+
+채팅 내용:
+$contentOnly
+""".trimIndent()
+
+            val conv = eng.createConversation()
+            try {
+                conv.sendMessage(prompt).toString()
+            } finally {
+                closeConversation(conv)
+            }
+        }
+    }
+
     // [Phase 1] 단방향 LLM 파이프라인 비활성화 — Phase 2 자율 검증 하네스 에이전트로 교체 예정
     @Suppress("UNUSED_PARAMETER")
     suspend fun runPipeline(
