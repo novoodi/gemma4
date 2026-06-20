@@ -3,16 +3,15 @@ package com.example.gemma4.service
 import android.util.Log
 import com.example.gemma4.BuildConfig
 import com.example.gemma4.data.local.UserStatusEntity
-import com.google.ai.client.generativeai.GenerativeModel
+import com.google.genai.Client
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class GeminiService {
 
-    private val model = GenerativeModel(
-        modelName = "gemini-3.5-flash",
-        apiKey = BuildConfig.GEMINI_API_KEY
-    )
+    private val client: Client by lazy {
+        Client.builder().apiKey(BuildConfig.GEMINI_API_KEY).build()
+    }
 
     suspend fun recommend(
         summary: String,
@@ -33,8 +32,10 @@ class GeminiService {
     private suspend fun generateWithRetry(prompt: String, maxRetries: Int = 3): String {
         repeat(maxRetries) { attempt ->
             try {
-                val response = model.generateContent(prompt)
-                return response.text ?: "추천 정보를 생성하지 못했습니다."
+                val response = withContext(Dispatchers.IO) {
+                    client.models.generateContent("gemini-3.5-flash", prompt, null)
+                }
+                return response.text() ?: "추천 정보를 생성하지 못했습니다."
             } catch (e: Exception) {
                 val msg = fullMessage(e)
                 Log.w("GeminiService", "시도 ${attempt + 1} 실패: $msg")

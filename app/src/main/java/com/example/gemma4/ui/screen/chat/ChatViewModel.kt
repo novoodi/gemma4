@@ -7,11 +7,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.example.gemma4.MoimApp
 import com.example.gemma4.data.SampleData
-import com.example.gemma4.data.local.UserStatusEntity
 import com.example.gemma4.data.model.MeetingSummary
 import com.example.gemma4.data.model.Message
 import com.example.gemma4.data.model.Participant
+import com.example.gemma4.data.pipeline.StatusCompressionPipeline
 import com.example.gemma4.data.repository.ChatRepository
+import com.example.gemma4.service.AgentOrchestrator
+import com.example.gemma4.service.OrchestratorResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,7 +23,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 
 sealed class SummaryState {
     data object Idle : SummaryState()
@@ -37,9 +38,12 @@ class ChatViewModel(
 
     private val llmService = (application as MoimApp).llmService
     private val userStatusRepository = (application as MoimApp).userStatusRepository
+    private val compressionPipeline: StatusCompressionPipeline = (application as MoimApp).compressionPipeline
+    private val agentOrchestrator: AgentOrchestrator = (application as MoimApp).agentOrchestrator
     val roomId: String = checkNotNull(savedStateHandle["roomId"])
 
     companion object {
+        private const val TAG = "ChatViewModel"
         private const val COMPRESSION_TRIGGER_COUNT = 10
     }
 
@@ -99,75 +103,52 @@ class ChatViewModel(
         }
     }
 
+    // 10개마다 Dispatchers.IO 백그라운드에서 StatusCompressionPipeline에 위임
     private fun triggerStatusCompression(msgs: List<Message>) {
         compressionJob = viewModelScope.launch(Dispatchers.IO) {
-            try {
-                if (!llmService.isModelAvailable) return@launch
-                llmService.initialize()
-                val json = llmService.compressChatToStatus(msgs)
-                val entity = parseUserStatus(json)
-                if (entity != null) {
-                    userStatusRepository.upsert(entity)
-                    Log.d("ChatViewModel", "UserStatus 업데이트 완료 roomId=$roomId")
-                }
-            } catch (e: Exception) {
-                Log.e("ChatViewModel", "상태 압축 실패", e)
-            }
+            compressionPipeline.compress(roomId, msgs)
         }
     }
 
-    private fun parseUserStatus(json: String): UserStatusEntity? {
-        return try {
-            val raw = Regex("""\{[\s\S]*\}""").find(json)?.value ?: json
-            val jsonStr = raw
-                .replace(Regex(""",\s*]"""), "]")
-                .replace(Regex(""",\s*\}"""), "}")
-            val obj = JSONObject(jsonStr)
-
-            fun arr(key: String): List<String> {
-                val a = obj.optJSONArray(key) ?: return emptyList()
-                return (0 until a.length()).map { a.getString(it) }
-            }
-
-            UserStatusEntity(
-                roomId = roomId,
-                participants = arr("participants"),
-                preferences = arr("preferences"),
-                availability = arr("availability"),
-                lastUpdated = System.currentTimeMillis()
-            )
-        } catch (e: Exception) {
-            Log.e("ChatViewModel", "UserStatus JSON 파싱 실패: $json", e)
-            null
-        }
-    }
-
+    /**
+     * Phase 3: 자율 검증 하네스 기반 요약.
+     * Guardrail 검증을 통과한 결과만 [_summaryState]에 emit된다.
+     */
     fun summarize() {
         val msgs = messages.value
-        if (msgs.isEmpty()) return
+        if (msgs.isEmpty()) {
+            _summaryState.value = SummaryState.Error("채팅 내역이 없습니다")
+            return
+        }
         viewModelScope.launch {
             _summaryState.value = SummaryState.Loading
             try {
-                compressionJob?.join()  // 압축이 진행 중이면 완료까지 대기
-                if (!llmService.isModelAvailable) {
-                    _summaryState.value = SummaryState.Error(
-                        "모델 파일을 찾을 수 없습니다.\n\n다음 경로에 파일을 넣어주세요:\n${llmService.modelPath}"
-                    )
-                    return@launch
-                }
-                llmService.initialize()
+                compressionJob?.join()  // 진행 중인 압축 완료 대기
+
                 val currentRoom = ChatRepository.getRoomById(roomId)
                 val userStatus = userStatusRepository.getStatus(roomId)
-                Log.d("ChatViewModel", "summarize 시작 — userStatus: $userStatus")
-                val result = llmService.runPipeline(
-                    roomId, msgs,
-                    currentRoom?.participants ?: emptyList(),
-                    userStatus
-                )
-                ChatRepository.saveSummary(result)
-                _summaryState.value = SummaryState.Success(result)
+                Log.d(TAG, "orchestrate 시작 — roomId=$roomId userStatus=$userStatus")
+
+                when (val result = agentOrchestrator.orchestrate(
+                    roomId = roomId,
+                    messages = msgs,
+                    roomParticipants = currentRoom?.participants ?: emptyList(),
+                    userStatus = userStatus
+                )) {
+                    is OrchestratorResult.Success -> {
+                        ChatRepository.saveSummary(result.summary)
+                        // Guardrail 통과한 무결점 결과만 UI에 emit
+                        _summaryState.value = SummaryState.Success(result.summary)
+                        Log.d(TAG, "요약 완료 ✓ — Guardrail 통과 시도: ${result.attempts}회")
+                    }
+                    is OrchestratorResult.Failed -> {
+                        _summaryState.value = SummaryState.Error(result.reason)
+                        Log.w(TAG, "요약 실패 — ${result.attempts}회 시도: ${result.reason}")
+                    }
+                }
             } catch (e: Exception) {
                 _summaryState.value = SummaryState.Error(e.message ?: "알 수 없는 오류가 발생했습니다")
+                Log.e(TAG, "summarize 예외", e)
             }
         }
     }

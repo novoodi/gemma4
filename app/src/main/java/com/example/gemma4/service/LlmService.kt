@@ -94,14 +94,20 @@ $transcript
         }
     }
 
+    // [Phase 1] 단방향 LLM 파이프라인 비활성화 — Phase 2 자율 검증 하네스 에이전트로 교체 예정
+    @Suppress("UNUSED_PARAMETER")
     suspend fun runPipeline(
         roomId: String,
         messages: List<Message>,
         roomParticipants: List<Participant> = emptyList(),
         userStatus: UserStatusEntity? = null
-    ): MeetingSummary = engineMutex.withLock {
-        val eng = checkNotNull(engine) { "엔진이 초기화되지 않았습니다" }
+    ): MeetingSummary {
+        throw UnsupportedOperationException(
+            "[Phase 1] 단방향 runPipeline 비활성화됨 — Phase 2 하네스 에이전트로 교체 예정"
+        )
 
+        /* ── 레거시 단방향 파이프라인 (비활성화) ────────────────────────────
+        val eng = checkNotNull(engine) { "엔진이 초기화되지 않았습니다" }
         closeActiveConversation()
 
         val senderIdToParticipant = roomParticipants.associateBy { it.id }
@@ -110,77 +116,39 @@ $transcript
             val tag = if (p != null) "[${p.name}]" else "[${msg.senderName}]"
             "$tag: ${msg.content}"
         }
-        Log.d("LlmService", "트랜스크립트 앞 3줄:\n${transcript.lines().take(3).joinToString("\n")}")
 
         val chatDate = messages.firstOrNull()?.let {
             Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
         } ?: LocalDate.now()
 
-        // ── Conv A: 요약/장소/날짜/도시 추출 ────────────────────────────────
+        // Conv A: 요약/장소/날짜/도시 순차 추출 (단방향 4-shot)
         val convA = eng.createConversation()
         activeConversation = convA
-
-        val summary: String
-        val location: String
-        val meetingDate: String
-        val city: String
+        val summary: String; val location: String; val meetingDate: String; val city: String
         try {
             summary = withContext(Dispatchers.IO) {
-                convA.sendMessage(
-                    "아래 모임 대화를 읽고 핵심 내용을 3~5문장으로 정리해줘. $NO_MARKDOWN\n\n$transcript"
-                ).toString()
+                convA.sendMessage("아래 모임 대화를 읽고 핵심 내용을 3~5문장으로 정리해줘. $NO_MARKDOWN\n\n$transcript").toString()
             }
             location = withContext(Dispatchers.IO) {
-                convA.sendMessage(
-                    "위 대화에서 모임 장소 이름만 짧게 알려줘. $NO_MARKDOWN"
-                ).toString()
+                convA.sendMessage("위 대화에서 모임 장소 이름만 짧게 알려줘. $NO_MARKDOWN").toString()
             }
             meetingDate = withContext(Dispatchers.IO) {
                 val raw = convA.sendMessage(
-                    "대화가 이루어진 날짜는 $chatDate 입니다. " +
-                    "위 대화에서 참석자들이 최종 확정한 모임 당일 날짜를 YYYY-MM-DD 형식으로만 답해줘. " +
-                    "투표 마감일, 제안된 날짜, 취소된 날짜는 제외하고 최종 결정된 날짜만 추출해. " +
-                    "'N일'처럼 일만 있으면 $chatDate 의 연도와 월을 그대로 사용해. " +
-                    "날짜를 특정할 수 없으면 미정 이라고만 해. $NO_MARKDOWN"
+                    "대화가 이루어진 날짜는 $chatDate 입니다. 위 대화에서 최종 확정한 날짜를 YYYY-MM-DD 형식으로만. $NO_MARKDOWN"
                 ).toString()
-                Log.d("LlmService", "날짜 raw: $raw")
                 Regex("\\d{4}-\\d{2}-\\d{2}").find(raw)?.value ?: "미정"
             }
             city = withContext(Dispatchers.IO) {
-                val raw = convA.sendMessage(
-                    "위 모임 장소가 있는 도시나 지역 이름을 한국어로만 알려줘. 예: 서울, 부산, 인천, 대구, 홍대, 강남. $NO_MARKDOWN"
-                ).toString().trim()
-                Log.d("LlmService", "도시 raw: $raw")
-                raw
+                convA.sendMessage("위 모임 장소 도시를 한국어로만. $NO_MARKDOWN").toString().trim()
             }
-        } finally {
-            closeActiveConversation()
-        }
+        } finally { closeActiveConversation() }
 
-        // ── Gemini: RAG 기반 장소/활동 추천 ────────────────────────────────
         val ragContext = feedbackRepository.buildRagContext()
-        Log.d("LlmService", "RAG context (${ragContext.length}자):\n$ragContext")
-        Log.d("LlmService", "UserStatus 주입: $userStatus")
-        val recommendation = geminiService.recommend(
-            summary = summary,
-            location = location,
-            date = meetingDate,
-            city = city,
-            ragContext = ragContext,
-            userStatus = userStatus
-        )
-
+        val recommendation = geminiService.recommend(summary, location, meetingDate, city, ragContext, userStatus)
         val weather = WeatherService.getWeather(city, meetingDate)
 
-        return MeetingSummary(
-            roomId = roomId,
-            summary = summary,
-            location = location,
-            meetingDate = meetingDate,
-            recommendation = recommendation,
-            weather = weather,
-            directions = ""
-        )
+        return MeetingSummary(roomId, summary, location, meetingDate, recommendation, weather, "")
+        ── 레거시 단방향 파이프라인 끝 ─────────────────────────────────────── */
     }
 
     fun release() {

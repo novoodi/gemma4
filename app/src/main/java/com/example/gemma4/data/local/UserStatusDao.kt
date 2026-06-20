@@ -1,13 +1,14 @@
 package com.example.gemma4.data.local
 
 import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Upsert
 
 @Dao
 interface UserStatusDao {
 
-    @Upsert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: UserStatusEntity)
 
     @Query("SELECT * FROM user_status WHERE roomId = :roomId")
