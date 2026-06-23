@@ -161,6 +161,8 @@ class AgentOrchestrator(
                 else "$accumulatedFeedback\n${guardrail.feedbackForRetry}"
                 Log.w(TAG, "시도 $attempt Guardrail 실패 → 자가 수정 피드백 누적 후 재시도")
 
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "시도 $attempt 예외", e)
                 if (attempt >= MAX_ATTEMPTS) {

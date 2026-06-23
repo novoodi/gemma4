@@ -1,6 +1,9 @@
 package com.example.gemma4
 
 import android.app.Application
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import com.example.gemma4.data.local.AppDatabase
 import com.example.gemma4.data.pipeline.GemmaOnDeviceLlm
 import com.example.gemma4.data.pipeline.MockOnDeviceLlm
@@ -12,6 +15,8 @@ import com.example.gemma4.service.GuardrailService
 import com.example.gemma4.service.LlmService
 
 class MoimApp : Application() {
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     val llmService: LlmService by lazy { LlmService(this) }
     val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
     val userStatusRepository: UserStatusRepository by lazy {

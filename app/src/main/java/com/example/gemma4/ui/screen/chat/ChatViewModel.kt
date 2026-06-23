@@ -120,8 +120,9 @@ class ChatViewModel(
             _summaryState.value = SummaryState.Error("채팅 내역이 없습니다")
             return
         }
-        viewModelScope.launch {
-            _summaryState.value = SummaryState.Loading
+        _summaryState.value = SummaryState.Loading
+        val appScope = getApplication<MoimApp>().applicationScope
+        appScope.launch {
             try {
                 compressionJob?.join()  // 진행 중인 압축 완료 대기
 
@@ -135,7 +136,6 @@ class ChatViewModel(
                 )) {
                     is OrchestratorResult.Success -> {
                         ChatRepository.saveSummary(result.summary)
-                        // Guardrail 통과한 무결점 결과만 UI에 emit
                         _summaryState.value = SummaryState.Success(result.summary)
                         Log.d(TAG, "요약 완료 ✓ — Guardrail 통과 시도: ${result.attempts}회")
                     }

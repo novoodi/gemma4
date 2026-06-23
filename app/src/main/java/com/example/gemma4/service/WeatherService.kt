@@ -7,39 +7,52 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 object WeatherService {
 
     private val apiKey get() = BuildConfig.WEATHER_API_KEY
 
-    // 기상청 단기예보 격자 좌표 (nx, ny)
-    private val gridMap = mapOf(
-        "서울" to (60 to 127), "마포" to (60 to 127), "강남" to (61 to 126),
-        "홍대" to (60 to 127), "종로" to (60 to 127), "여의도" to (59 to 126),
-        "인천" to (55 to 124), "경기" to (60 to 121), "수원" to (60 to 121),
-        "성남" to (62 to 123), "부산" to (98 to 76),  "대구" to (89 to 90),
-        "광주" to (58 to 74),  "대전" to (67 to 100), "울산" to (102 to 84),
-        "세종" to (66 to 103), "강릉" to (92 to 131), "전주" to (63 to 89),
-        "청주" to (69 to 107), "춘천" to (73 to 134), "제주" to (52 to 38),
-        "창원" to (89 to 77),  "고양" to (57 to 128), "용인" to (62 to 120)
+    // 중기 육상예보 구역코드
+    private val landRegionMap = mapOf(
+        "서울" to "11B00000", "마포" to "11B00000", "강남" to "11B00000",
+        "홍대" to "11B00000", "종로" to "11B00000", "여의도" to "11B00000",
+        "인천" to "11B00000", "경기" to "11B00000", "수원" to "11B00000",
+        "성남" to "11B00000", "고양" to "11B00000", "용인" to "11B00000",
+        "부산" to "11H20000", "대구" to "11H10000",
+        "광주" to "11F20000", "대전" to "11C20000", "울산" to "11H20000",
+        "세종" to "11C20000", "강릉" to "11D20000", "전주" to "11F10000",
+        "청주" to "11C10000", "춘천" to "11D10000", "제주" to "11G00000",
+        "창원" to "11H20000"
     )
 
-    private fun findGrid(city: String): Pair<Int, Int> =
-        gridMap.entries.firstOrNull { city.contains(it.key) }?.value ?: (60 to 127)
+    // 중기 기온예보 구역코드
+    private val taRegionMap = mapOf(
+        "서울" to "11B10101", "마포" to "11B10101", "강남" to "11B10101",
+        "홍대" to "11B10101", "종로" to "11B10101", "여의도" to "11B10101",
+        "인천" to "11B20601", "경기" to "11B20601", "수원" to "11B10305",
+        "성남" to "11B10302", "고양" to "11B10101", "용인" to "11B10314",
+        "부산" to "11H20201", "대구" to "11H10201",
+        "광주" to "11F20501", "대전" to "11C20401", "울산" to "11H20101",
+        "세종" to "11C20404", "강릉" to "11D20501", "전주" to "11F10201",
+        "청주" to "11C10301", "춘천" to "11D10301", "제주" to "11G00201",
+        "창원" to "11H20301"
+    )
 
-    // 기상청 발표 시각 (매 3시간, 10분 후 제공)
-    private fun getBaseDateTime(): Pair<String, String> {
-        val now = LocalDateTime.now().minusMinutes(10)
-        val validHours = listOf(2, 5, 8, 11, 14, 17, 20, 23)
-        val baseHour = validHours.lastOrNull { it <= now.hour } ?: run {
-            // 자정 이전이면 전날 23시 기준
-            return LocalDate.now().minusDays(1).toString().replace("-", "") to "2300"
-        }
-        return now.toLocalDate().toString().replace("-", "") to String.format("%02d00", baseHour)
+    private fun findLandRegion(city: String): String =
+        landRegionMap.entries.firstOrNull { city.contains(it.key) }?.value ?: "11B00000"
+
+    private fun findTaRegion(city: String): String =
+        taRegionMap.entries.firstOrNull { city.contains(it.key) }?.value ?: "11B10101"
+
+    // 중기예보 발표시각 (하루 2회: 06시, 18시)
+    private fun getTmFc(): String {
+        val now = LocalDateTime.now()
+        val baseHour = if (now.hour >= 18) 18 else 6
+        return now.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE) +
+            String.format("%02d00", baseHour)
     }
-
-    private val skyMap = mapOf("1" to "맑음", "3" to "구름많음", "4" to "흐림")
-    private val ptyMap = mapOf("1" to " (비)", "2" to " (비/눈)", "3" to " (눈)", "4" to " (소나기)")
 
     suspend fun getWeather(city: String, date: String): String = withContext(Dispatchers.IO) {
         if (apiKey.isBlank() || apiKey == "여기에_API_키_입력") {
@@ -49,75 +62,73 @@ object WeatherService {
             return@withContext "모임 날짜가 확정되지 않아 날씨를 가져올 수 없습니다"
         }
 
+        val targetDate = try { LocalDate.parse(date) } catch (e: Exception) {
+            return@withContext "날짜 형식 오류: $date"
+        }
+        val dayDiff = ChronoUnit.DAYS.between(LocalDate.now(), targetDate).toInt()
+
+        when {
+            dayDiff < 0  -> return@withContext "이미 지난 날짜입니다"
+            dayDiff < 3  -> return@withContext "$date 날씨: 중기예보는 3일 이후부터 제공됩니다"
+            dayDiff > 10 -> return@withContext "$date 는 중기예보 범위(최대 10일)를 초과합니다"
+        }
+
         try {
-            val (nx, ny) = findGrid(city)
-            val fcstDate = date.replace("-", "")
-            val (baseDate, baseTime) = getBaseDateTime()
-
             val encodedKey = java.net.URLEncoder.encode(apiKey.trim(), "UTF-8")
-            val url = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst" +
-                "?serviceKey=$encodedKey&numOfRows=1000&pageNo=1&dataType=JSON" +
-                "&base_date=$baseDate&base_time=$baseTime&nx=$nx&ny=$ny"
+            val tmFc = getTmFc()
 
-            Log.d("WeatherService", "URL: $url")
+            // ── 육상 중기예보 (날씨상태, 강수확률) ──────────────────────────────
+            val landRegId = findLandRegion(city)
+            val landUrl = "https://apis.data.go.kr/1360000/MidFcstInfoService/getMidLandFcst" +
+                "?serviceKey=$encodedKey&numOfRows=10&pageNo=1&dataType=JSON" +
+                "&regId=$landRegId&tmFc=$tmFc"
+            Log.d("WeatherService", "LandURL: $landUrl")
 
-            val conn = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
-                connectTimeout = 10_000
-                readTimeout = 10_000
+            val landConn = (java.net.URL(landUrl).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 10_000; readTimeout = 10_000
             }
-            val httpCode = conn.responseCode
-            Log.d("WeatherService", "HTTP: $httpCode")
+            val landCode = landConn.responseCode
+            Log.d("WeatherService", "HTTP: $landCode")
 
-            val responseText = if (httpCode == 200) {
-                conn.inputStream.bufferedReader().readText()
-            } else {
-                val body = conn.errorStream?.bufferedReader()?.readText() ?: ""
+            if (landCode != 200) {
+                val body = landConn.errorStream?.bufferedReader()?.readText() ?: ""
                 Log.d("WeatherService", "Error body: $body")
-                return@withContext "HTTP $httpCode 오류: ${body.take(300)}"
+                return@withContext "HTTP $landCode 오류: ${body.take(200)}"
             }
 
-            // 공공데이터포털 인증/서비스 오류 시 XML 반환
-            if (responseText.trimStart().startsWith("<")) {
-                val reasonCode = Regex("<returnReasonCode>(.*?)</returnReasonCode>")
-                    .find(responseText)?.groupValues?.get(1) ?: "?"
-                val authMsg = Regex("<returnAuthMsg>(.*?)</returnAuthMsg>")
-                    .find(responseText)?.groupValues?.get(1) ?: "알 수 없음"
-                return@withContext "날씨 API 인증 오류 ($reasonCode): $authMsg"
+            val landText = landConn.inputStream.bufferedReader().readText()
+            if (landText.trimStart().startsWith("<")) return@withContext "날씨 API 인증 오류"
+
+            val landItem = JSONObject(landText)
+                .getJSONObject("response").getJSONObject("body")
+                .getJSONObject("items").getJSONArray("item").getJSONObject(0)
+
+            val wfAm   = landItem.optString("wf${dayDiff}Am", "")
+            val wfPm   = landItem.optString("wf${dayDiff}Pm", "")
+            val rnStAm = landItem.optString("rnSt${dayDiff}Am", "-")
+            val rnStPm = landItem.optString("rnSt${dayDiff}Pm", "-")
+            val sky    = wfPm.ifBlank { wfAm }
+
+            // ── 중기 기온예보 (최저/최고기온) ────────────────────────────────────
+            val taRegId = findTaRegion(city)
+            val taUrl = "https://apis.data.go.kr/1360000/MidFcstInfoService/getMidTaFcst" +
+                "?serviceKey=$encodedKey&numOfRows=10&pageNo=1&dataType=JSON" +
+                "&regId=$taRegId&tmFc=$tmFc"
+
+            val taConn = (java.net.URL(taUrl).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 10_000; readTimeout = 10_000
             }
+            val (taMin, taMax) = if (taConn.responseCode == 200) {
+                val taText = taConn.inputStream.bufferedReader().readText()
+                if (!taText.trimStart().startsWith("<")) {
+                    val taItem = JSONObject(taText)
+                        .getJSONObject("response").getJSONObject("body")
+                        .getJSONObject("items").getJSONArray("item").getJSONObject(0)
+                    taItem.optString("taMin$dayDiff", "-") to taItem.optString("taMax$dayDiff", "-")
+                } else "-" to "-"
+            } else "-" to "-"
 
-            val json = JSONObject(responseText)
-            val resultCode = json.getJSONObject("response")
-                .getJSONObject("header")
-                .getString("resultCode")
-
-            if (resultCode != "00") return@withContext "날씨 API 오류 (코드: $resultCode)"
-
-            val items = json.getJSONObject("response")
-                .getJSONObject("body")
-                .getJSONObject("items")
-                .getJSONArray("item")
-
-            // 해당 날짜 정오(1200) 데이터 수집
-            val data = mutableMapOf<String, String>()
-            for (i in 0 until items.length()) {
-                val item = items.getJSONObject(i)
-                if (item.getString("fcstDate") == fcstDate &&
-                    item.getString("fcstTime") == "1200") {
-                    data[item.getString("category")] = item.getString("fcstValue")
-                }
-            }
-
-            if (data.isEmpty()) {
-                return@withContext "$date 예보 없음 (기상청 단기예보는 오늘부터 3일 이내만 제공)"
-            }
-
-            val sky = skyMap[data["SKY"]] ?: "알 수 없음"
-            val pty = ptyMap[data["PTY"]] ?: ""
-            val tmp = data["TMP"] ?: "-"
-            val pop = data["POP"] ?: "-"
-            val reh = data["REH"] ?: "-"
-
-            "$sky$pty | 기온 ${tmp}도 | 강수확률 ${pop}% | 습도 ${reh}%"
+            "$sky | 최저 ${taMin}도 / 최고 ${taMax}도 | 강수확률 오전 ${rnStAm}% / 오후 ${rnStPm}%"
         } catch (e: Exception) {
             "날씨 정보를 가져오는 중 오류: ${e.message}"
         }
