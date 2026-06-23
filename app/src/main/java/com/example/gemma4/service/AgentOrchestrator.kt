@@ -16,7 +16,11 @@ import com.google.genai.types.GenerateContentConfig
 import com.google.genai.types.Part
 import com.google.genai.types.Schema
 import com.google.genai.types.Tool
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
@@ -24,6 +28,21 @@ import java.time.LocalDate
 sealed class OrchestratorResult {
     data class Success(val summary: MeetingSummary, val attempts: Int) : OrchestratorResult()
     data class Failed(val reason: String, val attempts: Int) : OrchestratorResult()
+}
+
+// ── 에이전트 생명주기 이벤트 ──────────────────────────────────────────────────
+sealed class AgentEvent {
+    data class OrchestrationStarted(val roomId: String, val messageCount: Int) : AgentEvent()
+    data class GemmaSummaryCompleted(val summary: String) : AgentEvent()
+    data class PromptGenerated(val attempt: Int, val prompt: String) : AgentEvent()
+    data class ToolCalled(val name: String, val args: Map<String, Any?>, val result: String) : AgentEvent()
+    data class JsonParsed(val rawJson: String) : AgentEvent()
+    data class GuardrailEvaluated(val attempt: Int, val passed: Boolean, val feedback: String) : AgentEvent()
+    data class OrchestrationFinished(val success: Boolean, val attempts: Int, val reason: String? = null) : AgentEvent()
+}
+
+interface AgentEventTracker {
+    fun onEvent(event: AgentEvent)
 }
 
 /**
@@ -97,6 +116,34 @@ class AgentOrchestrator(
         )
         .build()
 
+    private val responseSchema: Schema = Schema.builder()
+        .type("OBJECT")
+        .properties(
+            mapOf(
+                "summary" to Schema.builder()
+                    .type("STRING")
+                    .description("모임 전체 요약 (날씨·장소·분위기 포함)")
+                    .build(),
+                "recommendedPlaces" to Schema.builder()
+                    .type("ARRAY")
+                    .items(Schema.builder().type("STRING").build())
+                    .description("추천 장소 목록 (2~3곳)")
+                    .build(),
+                "recommendedActivities" to Schema.builder()
+                    .type("ARRAY")
+                    .items(Schema.builder().type("STRING").build())
+                    .description("추천 활동 목록 (2~3가지)")
+                    .build(),
+                "itemsToBring" to Schema.builder()
+                    .type("ARRAY")
+                    .items(Schema.builder().type("STRING").build())
+                    .description("챙겨갈 것 목록 (3~5가지)")
+                    .build()
+            )
+        )
+        .required(listOf("summary", "recommendedPlaces", "recommendedActivities", "itemsToBring"))
+        .build()
+
     private val genConfig: GenerateContentConfig = GenerateContentConfig.builder()
         .tools(
             listOf(
@@ -105,6 +152,8 @@ class AgentOrchestrator(
                     .build()
             )
         )
+        .responseMimeType("application/json")
+        .responseSchema(responseSchema)
         .build()
 
     // ── 내부 전송 결과 래퍼 ──────────────────────────────────────────────────
@@ -113,19 +162,29 @@ class AgentOrchestrator(
         val city: String
     )
 
+    private data class FcCallResult(
+        val name: String,
+        val args: Map<String, Any?>,
+        val result: String
+    )
+
     // ── 공개 진입점 ──────────────────────────────────────────────────────────
 
     suspend fun orchestrate(
         roomId: String,
         messages: List<Message>,
         userStatus: UserStatusEntity?,
-        chatDate: LocalDate = LocalDate.now()
+        chatDate: LocalDate = LocalDate.now(),
+        eventTracker: AgentEventTracker? = null
     ): OrchestratorResult = withContext(Dispatchers.IO) {
+
+        eventTracker?.onEvent(AgentEvent.OrchestrationStarted(roomId, messages.size))
 
         // 채팅 원문은 온디바이스에서 익명화 — 이 결과만 클라우드로 전송
         Log.d(TAG, "Gemma 1차 요약 시작 (온디바이스)")
         val gemmaSum = onDeviceLlm.summarizeForPrivacy(messages)
         Log.d(TAG, "Gemma 요약 완료: ${gemmaSum.take(80)}")
+        eventTracker?.onEvent(AgentEvent.GemmaSummaryCompleted(gemmaSum))
 
         val ragContext = feedbackRepository.buildRagContext()
         val basePrompt = buildSystemPrompt(gemmaSum, chatDate, userStatus, ragContext)
@@ -143,17 +202,22 @@ class AgentOrchestrator(
                 append("\n\n[시스템 검증 피드백 — 반드시 반영할 것]\n")
                 append(accumulatedFeedback)
             }
+            eventTracker?.onEvent(AgentEvent.PromptGenerated(attempt, prompt))
 
             try {
-                val callResult = callGeminiWithTools(prompt, roomId)
+                val callResult = callGeminiWithTools(prompt, roomId, eventTracker)
                 val guardrail = guardrailService.verify(
                     text = callResult.summary.recommendation,
                     city = callResult.city
                 )
                 Log.d(TAG, "시도 $attempt Guardrail: passed=${guardrail.passed}")
+                eventTracker?.onEvent(
+                    AgentEvent.GuardrailEvaluated(attempt, guardrail.passed, guardrail.feedbackForRetry)
+                )
 
                 if (guardrail.passed) {
                     Log.d(TAG, "Guardrail 통과 ✓ — 총 $attempt 회")
+                    eventTracker?.onEvent(AgentEvent.OrchestrationFinished(true, attempt))
                     return@withContext OrchestratorResult.Success(callResult.summary, attempt)
                 }
 
@@ -166,17 +230,25 @@ class AgentOrchestrator(
             } catch (e: Exception) {
                 Log.e(TAG, "시도 $attempt 예외", e)
                 if (attempt >= MAX_ATTEMPTS) {
-                    return@withContext OrchestratorResult.Failed("예외: ${e.message}", attempt)
+                    val reason = "예외: ${e.message}"
+                    eventTracker?.onEvent(AgentEvent.OrchestrationFinished(false, attempt, reason))
+                    return@withContext OrchestratorResult.Failed(reason, attempt)
                 }
             }
         }
 
-        OrchestratorResult.Failed("최대 재시도 횟수($MAX_ATTEMPTS) 초과", MAX_ATTEMPTS)
+        val reason = "최대 재시도 횟수($MAX_ATTEMPTS) 초과"
+        eventTracker?.onEvent(AgentEvent.OrchestrationFinished(false, MAX_ATTEMPTS, reason))
+        OrchestratorResult.Failed(reason, MAX_ATTEMPTS)
     }
 
     // ── Gemini Function Calling 실행 ─────────────────────────────────────────
 
-    private suspend fun callGeminiWithTools(prompt: String, roomId: String): GeminiCallResult {
+    private suspend fun callGeminiWithTools(
+        prompt: String,
+        roomId: String,
+        eventTracker: AgentEventTracker?
+    ): GeminiCallResult {
         if (apiKey.isBlank() || apiKey.startsWith("여기에")) {
             Log.w(TAG, "GEMINI_API_KEY 미설정 → Mock 결과 반환")
             return GeminiCallResult(buildMockSummary(roomId), "미정")
@@ -211,29 +283,40 @@ class AgentOrchestrator(
             response.candidates()?.orElse(null)?.firstOrNull()?.content()?.orElse(null)
                 ?.let { history.add(it) }
 
-            val funcParts = mutableListOf<Part>()
-            for (fc in fcList) {
-                val fcName = fc.name().orElse(null) ?: continue
-                @Suppress("UNCHECKED_CAST")
-                val args = fc.args().orElse(null) as? Map<String, Any?> ?: emptyMap()
-                val result = dispatchFunctionCall(fcName, args, city, meetingDate)
-
-                when (fcName) {
-                    "getWeather" -> {
-                        city = args["city"]?.toString()?.removeSurrounding("\"") ?: city
-                        meetingDate = args["date"]?.toString()?.removeSurrounding("\"") ?: meetingDate
-                        weatherResult = result
+            // 1단계: 모든 함수 호출을 병렬 실행 — 스냅샷으로 공유 상태 격리
+            val callResults: List<FcCallResult> = coroutineScope {
+                fcList.mapNotNull { fc ->
+                    val fcName = fc.name().orElse(null) ?: return@mapNotNull null
+                    @Suppress("UNCHECKED_CAST")
+                    val args = fc.args().orElse(null) as? Map<String, Any?> ?: emptyMap()
+                    val snapCity = city
+                    val snapDate = meetingDate
+                    async {
+                        val result = dispatchFunctionCall(fcName, args, snapCity, snapDate)
+                        Log.d(TAG, "함수 실행: $fcName → ${result.take(80)}")
+                        FcCallResult(fcName, args, result)
                     }
-                    "searchPlace" -> city = args["city"]?.toString()?.removeSurrounding("\"") ?: city
-                }
-                Log.d(TAG, "함수 실행: $fcName → ${result.take(80)}")
+                }.awaitAll()
+            }
 
+            // 2단계: 단일 스레드에서 순차적으로 상태 업데이트 → Race Condition 없음
+            val funcParts = mutableListOf<Part>()
+            for (r in callResults) {
+                eventTracker?.onEvent(AgentEvent.ToolCalled(r.name, r.args, r.result))
+                when (r.name) {
+                    "getWeather" -> {
+                        city = r.args["city"]?.toString()?.removeSurrounding("\"") ?: city
+                        meetingDate = r.args["date"]?.toString()?.removeSurrounding("\"") ?: meetingDate
+                        weatherResult = r.result
+                    }
+                    "searchPlace" -> city = r.args["city"]?.toString()?.removeSurrounding("\"") ?: city
+                }
                 funcParts.add(
                     Part.builder()
                         .functionResponse(
                             FunctionResponse.builder()
-                                .name(fcName)
-                                .response(mapOf("result" to result))
+                                .name(r.name)
+                                .response(mapOf("result" to r.result))
                                 .build()
                         )
                         .build()
@@ -252,12 +335,43 @@ class AgentOrchestrator(
             }
         }
 
-        val recommendation = response.text() ?: "추천 정보를 생성하지 못했습니다."
+        val jsonText = response.text()
+            ?: throw IllegalStateException("Gemini 응답이 비어 있습니다")
+
+        eventTracker?.onEvent(AgentEvent.JsonParsed(jsonText))
+
+        val json = try {
+            JSONObject(jsonText)
+        } catch (e: Exception) {
+            Log.e(TAG, "JSON 파싱 실패: $jsonText", e)
+            throw IllegalStateException("구조화된 응답 파싱 실패: ${e.message}")
+        }
+
+        fun JSONObject.stringList(key: String): List<String> {
+            val arr = optJSONArray(key) ?: return emptyList()
+            return (0 until arr.length()).map { arr.getString(it) }
+        }
+
+        val summaryText       = json.optString("summary", "요약 없음")
+        val places            = json.stringList("recommendedPlaces")
+        val activities        = json.stringList("recommendedActivities")
+        val items             = json.stringList("itemsToBring")
+
+        val recommendation = buildString {
+            appendLine("장소 추천")
+            places.forEach { appendLine("• $it") }
+            appendLine("\n활동 추천")
+            activities.forEach { appendLine("• $it") }
+            appendLine("\n챙겨갈 것")
+            items.forEach { appendLine("• $it") }
+        }.trim()
+
+        Log.d(TAG, "JSON 파싱 완료 — 장소 ${places.size}곳, 활동 ${activities.size}개, 준비물 ${items.size}개")
 
         return GeminiCallResult(
             summary = MeetingSummary(
                 roomId = roomId,
-                summary = recommendation.lines().take(5).joinToString("\n"),
+                summary = summaryText,
                 location = city,
                 meetingDate = meetingDate,
                 recommendation = recommendation,
@@ -323,7 +437,7 @@ $gemmaSum
 2. getWeather 도구로 모임 날짜와 도시의 날씨를 반드시 조회하세요.
 3. searchPlace 도구로 후보 장소를 검색하세요.
 4. 장소 2~3곳, 활동 2~3가지, 챙겨갈 것 3~5가지를 추천하세요.
-5. 별표·샵·대괄호 등 마크다운 기호 없이 일반 텍스트로만 답하세요.
+5. 반드시 제공된 JSON 스키마에 맞춰 응답하세요.
 6. 참가자 프로필의 선호/불호와 일정 제약을 엄격히 반영하세요.
 """.trimIndent()
     }

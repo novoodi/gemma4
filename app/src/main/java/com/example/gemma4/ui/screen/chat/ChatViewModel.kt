@@ -12,6 +12,8 @@ import com.example.gemma4.data.model.Message
 import com.example.gemma4.data.model.Participant
 import com.example.gemma4.data.pipeline.StatusCompressionPipeline
 import com.example.gemma4.data.repository.ChatRepository
+import com.example.gemma4.service.AgentEvent
+import com.example.gemma4.service.AgentEventTracker
 import com.example.gemma4.service.AgentOrchestrator
 import com.example.gemma4.service.OrchestratorResult
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +70,9 @@ class ChatViewModel(
     private val _summaryState = MutableStateFlow<SummaryState>(SummaryState.Idle)
     val summaryState: StateFlow<SummaryState> = _summaryState.asStateFlow()
 
+    private val _agentProgress = MutableStateFlow("")
+    val agentProgress: StateFlow<String> = _agentProgress.asStateFlow()
+
     private var compressionJob: Job? = null
 
     init {
@@ -121,6 +126,7 @@ class ChatViewModel(
             return
         }
         _summaryState.value = SummaryState.Loading
+        _agentProgress.value = ""
         val appScope = getApplication<MoimApp>().applicationScope
         appScope.launch {
             try {
@@ -129,10 +135,32 @@ class ChatViewModel(
                 val userStatus = userStatusRepository.getStatus(roomId)
                 Log.d(TAG, "orchestrate 시작 — roomId=$roomId userStatus=$userStatus")
 
+                val tracker = object : AgentEventTracker {
+                    override fun onEvent(event: AgentEvent) {
+                        _agentProgress.value = when (event) {
+                            is AgentEvent.OrchestrationStarted  -> "대화 내용을 분석하고 있습니다..."
+                            is AgentEvent.GemmaSummaryCompleted -> "핵심 내용을 추출했습니다. 클라우드에 연결 중..."
+                            is AgentEvent.PromptGenerated       -> "AI에게 질문을 전달하고 있습니다... (시도 ${event.attempt})"
+                            is AgentEvent.ToolCalled            -> when (event.name) {
+                                "getWeather"  -> "날씨를 확인하고 있습니다..."
+                                "searchPlace" -> "주변 장소를 검색하고 있습니다..."
+                                else          -> "정보를 수집하고 있습니다..."
+                            }
+                            is AgentEvent.JsonParsed            -> "추천 결과를 정리하고 있습니다..."
+                            is AgentEvent.GuardrailEvaluated    -> if (event.passed)
+                                "추천 결과를 검증했습니다."
+                            else
+                                "결과를 다듬고 있습니다... (시도 ${event.attempt})"
+                            is AgentEvent.OrchestrationFinished -> if (event.success) "완료!" else "분석을 마쳤습니다."
+                        }
+                    }
+                }
+
                 when (val result = agentOrchestrator.orchestrate(
                     roomId = roomId,
                     messages = msgs,
-                    userStatus = userStatus
+                    userStatus = userStatus,
+                    eventTracker = tracker
                 )) {
                     is OrchestratorResult.Success -> {
                         ChatRepository.saveSummary(result.summary)

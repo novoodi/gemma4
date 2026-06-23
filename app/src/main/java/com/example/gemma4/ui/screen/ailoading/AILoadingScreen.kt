@@ -1,15 +1,12 @@
 package com.example.gemma4.ui.screen.ailoading
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -33,28 +30,16 @@ import kotlinx.coroutines.withTimeoutOrNull
 class AILoadingViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
     val roomId: String = checkNotNull(savedStateHandle["roomId"])
 
-    private val _step = MutableStateFlow(0)
-    val step: StateFlow<Int> = _step.asStateFlow()
-
     val summaryReady: StateFlow<Boolean> = ChatRepository.summaries
         .map { it.containsKey(roomId) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    // UI 애니메이션이 끝난 뒤 실제 AI 완료(or 타임아웃)되면 true
     private val _done = MutableStateFlow(false)
     val done: StateFlow<Boolean> = _done.asStateFlow()
 
     init {
-        // UI 단계 애니메이션
         viewModelScope.launch {
-            delay(600);  _step.value = 1
-            delay(800);  _step.value = 2
-            delay(800);  _step.value = 3
-        }
-        // 실제 AI 완료 대기 — step 3 이후 최대 90초
-        viewModelScope.launch {
-            _step.filter { it >= 3 }.first()
-            withTimeoutOrNull(90_000L) {
+            withTimeoutOrNull(180_000L) {
                 summaryReady.filter { it }.first()
             }
             _done.value = true
@@ -63,8 +48,11 @@ class AILoadingViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
 }
 
 @Composable
-fun AILoadingScreen(navController: NavController, viewModel: AILoadingViewModel = viewModel()) {
-    val step by viewModel.step.collectAsState()
+fun AILoadingScreen(
+    navController: NavController,
+    agentProgress: String,
+    viewModel: AILoadingViewModel = viewModel()
+) {
     val done by viewModel.done.collectAsState()
 
     LaunchedEffect(done) {
@@ -76,14 +64,11 @@ fun AILoadingScreen(navController: NavController, viewModel: AILoadingViewModel 
         }
     }
 
-    val steps = listOf("대화 내용 분석 중...", "조건 추출 중...", "장소 검증 중...", "AI 추천 생성 중...", "리포트 생성 완료!")
-
     Column(
         modifier = Modifier.fillMaxSize().background(White),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // Spinner + gemini icon
         Box(modifier = Modifier.size(80.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(
                 modifier = Modifier.size(80.dp),
@@ -103,27 +88,13 @@ fun AILoadingScreen(navController: NavController, viewModel: AILoadingViewModel 
 
         Text("AI가 분석 중입니다", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
         Spacer(Modifier.height(8.dp))
-        val displayStep = if (done) steps.lastIndex else step
         Text(
-            text = steps.getOrElse(displayStep) { "" },
+            text = agentProgress.ifBlank { "분석을 시작하고 있습니다..." },
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = if (done) Success600 else Blue600,
             modifier = Modifier.defaultMinSize(minHeight = 22.dp),
         )
-
-        Spacer(Modifier.height(32.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            repeat(3) { i ->
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (done || i < step) Blue600 else Gray200)
-                )
-            }
-        }
     }
 }
 

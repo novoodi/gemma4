@@ -5,6 +5,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -16,6 +18,7 @@ import com.example.gemma4.ui.screen.ailoading.AILoadingScreen
 import com.example.gemma4.ui.screen.aireport.AIReportScreen
 import com.example.gemma4.ui.screen.calendar.CalendarScreen
 import com.example.gemma4.ui.screen.chat.ChatScreen
+import com.example.gemma4.ui.screen.chat.ChatViewModel
 import com.example.gemma4.ui.screen.chatlist.ChatListScreen
 import com.example.gemma4.ui.screen.home.HomeScreen
 import com.example.gemma4.ui.screen.login.LoginScreen
@@ -133,8 +136,14 @@ class MainActivity : ComponentActivity() {
                     composable(
                         route     = Screen.AILoading.route,
                         arguments = listOf(navArgument("roomId") { type = NavType.StringType }),
-                    ) {
-                        AILoadingScreen(navController = navController)
+                    ) { backStackEntry ->
+                        val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
+                        val chatEntry = remember(backStackEntry) {
+                            navController.getBackStackEntry(Screen.Chat.createRoute(roomId))
+                        }
+                        val chatViewModel: ChatViewModel = viewModel(chatEntry)
+                        val agentProgress by chatViewModel.agentProgress.collectAsStateWithLifecycle()
+                        AILoadingScreen(navController = navController, agentProgress = agentProgress)
                     }
                     composable(
                         route     = Screen.AIReport.route,
