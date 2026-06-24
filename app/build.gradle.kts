@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    id("com.google.gms.google-services")
 }
 
 val localProperties = Properties().apply {
@@ -14,11 +15,11 @@ val localProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.example.gemma4"
+    namespace = "com.navoodi.morimi"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.gemma4"
+        applicationId = "com.navoodi.morimi"
         minSdk = 34
         targetSdk = 36
         versionCode = 1
@@ -61,8 +62,34 @@ android {
     }
 }
 
+// ─── 의존성 충돌 해소 ───────────────────────────────────────────────────────
+// 1) protobuf: google-genai → protobuf-java(full), firebase → protobuf-javalite
+//    Android에서는 javalite만 사용하므로 protobuf-java 전체 제거
+// 2) gRPC 버전 불일치: firebase-firestore가 grpc-core:1.62.2를 쓰지만
+//    google-genai가 grpc-api:1.70.0을 요구 → grpc-core만 구버전에 고정되고
+//    grpc-api만 올라가 InternalGlobalInterceptors(1.65에서 제거)를 못 찾아 크래시.
+//    모든 io.grpc 모듈을 1.70.0으로 통일해 버전 불일치를 없앤다.
+configurations.all {
+    exclude(group = "com.google.protobuf", module = "protobuf-java")
+    resolutionStrategy {
+        eachDependency {
+            if (requested.group == "io.grpc") {
+                useVersion("1.70.0")
+            }
+        }
+    }
+}
+
 dependencies {
 
+    implementation(platform("com.google.firebase:firebase-bom:34.15.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation(libs.firebase.messaging)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
