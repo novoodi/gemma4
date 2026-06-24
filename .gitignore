@@ -16,6 +16,9 @@ local.properties
 
 .kotlin/
 
+# Firebase config (sensitive)
+app/google-services.json
+
 # Large model files
 *.litertlm
 *.bin
