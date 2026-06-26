@@ -15,6 +15,7 @@ import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.service.AgentEvent
 import com.navoodi.morimi.service.AgentEventTracker
 import com.navoodi.morimi.service.AgentOrchestrator
+import com.navoodi.morimi.service.FcmService
 import com.navoodi.morimi.service.OrchestratorResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -190,15 +191,24 @@ class ChatViewModel(
                     is OrchestratorResult.Success -> {
                         ChatRepository.saveSummary(result.summary)
                         _summaryState.value = SummaryState.Success(result.summary)
+                        FcmService.showAnalysisDoneNotification(
+                            getApplication<MoimApp>().applicationContext, roomId, success = true
+                        )
                         Log.d(TAG, "요약 완료 ✓ — Guardrail 통과 시도: ${result.attempts}회")
                     }
                     is OrchestratorResult.Failed -> {
                         _summaryState.value = SummaryState.Error(result.reason)
+                        FcmService.showAnalysisDoneNotification(
+                            getApplication<MoimApp>().applicationContext, roomId, success = false
+                        )
                         Log.w(TAG, "요약 실패 — ${result.attempts}회 시도: ${result.reason}")
                     }
                 }
             } catch (e: Exception) {
                 _summaryState.value = SummaryState.Error(e.message ?: "알 수 없는 오류가 발생했습니다")
+                FcmService.showAnalysisDoneNotification(
+                    getApplication<MoimApp>().applicationContext, roomId, success = false
+                )
                 Log.e(TAG, "summarize 예외", e)
             }
         }

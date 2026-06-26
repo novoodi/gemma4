@@ -24,3 +24,10 @@ app/google-services.json
 *.bin
 *.gguf
 *.safetensors
+
+# Claude Code internal files
+/.agents/
+skills-lock.json
+
+# Binary/design assets
+*.zip

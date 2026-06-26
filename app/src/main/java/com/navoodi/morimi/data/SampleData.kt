@@ -14,6 +14,8 @@ object SampleData {
         "성민"   to Participant(id = "user_006", name = "성민"),
     )
 
+    val participantById: Map<String, Participant> = PARTICIPANTS.values.associateBy { it.id }
+
     private fun p(name: String) = PARTICIPANTS[name] ?: Participant(name = name)
 
     data class Dataset(

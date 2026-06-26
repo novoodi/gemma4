@@ -8,5 +8,9 @@ data class CalendarEvent(
     val date: String, // YYYY-MM-DD
     val location: String = "",
     val note: String = "",
-    val roomId: String? = null
+    val roomId: String? = null,
+    // ── 카드뉴스에서 선택한 장소 정보 (기본값으로 하위 호환) ─────────────
+    val placeName: String = "",
+    val placeAddress: String = "",
+    val placeUrl: String = ""
 )

@@ -1,6 +1,9 @@
 package com.navoodi.morimi.service
 
 import android.util.Log
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 enum class PlaceStatus { OPEN, CLOSED, UNKNOWN }
 
@@ -31,11 +34,11 @@ class GuardrailService {
     }
 
     /**
-     * 추천 텍스트에서 장소명을 추출하고 카카오맵 API로 영업 여부를 검증한다.
+     * 추천 텍스트에서 장소명을 추출하고 카카오 로컬 API로 실존 여부를 검증한다.
      * @param text  AgentOrchestrator가 Gemini로부터 받은 최종 추천 텍스트
-     * @param city  모임 도시 (카카오맵 검색 범위 한정용)
+     * @param city  모임 도시 (로그용)
      */
-    fun verify(text: String, city: String): GuardrailResult {
+    suspend fun verify(text: String, city: String): GuardrailResult {
         val candidates = extractPlaceCandidates(text)
         Log.d(TAG, "장소 후보 ${candidates.size}건: $candidates")
 
@@ -43,8 +46,13 @@ class GuardrailService {
             return GuardrailResult(passed = true, verifiedPlaces = emptyList(), feedbackForRetry = "")
         }
 
-        val verified = candidates.map { name ->
-            PlaceVerification(name = name, status = mockKakaoVerify(name, city))
+        val verified = coroutineScope {
+            candidates.map { name ->
+                async {
+                    val exists = KakaoLocalService.placeExists(name)
+                    PlaceVerification(name = name, status = if (exists) PlaceStatus.OPEN else PlaceStatus.CLOSED)
+                }
+            }.awaitAll()
         }
 
         val closed = verified.filter { it.status == PlaceStatus.CLOSED }
@@ -69,15 +77,4 @@ class GuardrailService {
             .distinct()
             .take(5)
             .toList()
-
-    /**
-     * Mock 카카오맵 장소 검증 — Phase 4에서 실제 REST API 호출로 교체
-     *
-     * 결정론적 hash로 ~14% 확률 CLOSED 시뮬레이션:
-     *  같은 장소명+도시 조합은 항상 같은 결과 → 단위 테스트 재현 가능
-     */
-    private fun mockKakaoVerify(name: String, city: String): PlaceStatus {
-        val hash = Math.abs((name + city).hashCode())
-        return if (hash % 7 == 0) PlaceStatus.CLOSED else PlaceStatus.OPEN
-    }
 }

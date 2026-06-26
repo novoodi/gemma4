@@ -1,5 +1,7 @@
 package com.navoodi.morimi.ui.screen.calendar
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -215,25 +218,7 @@ fun CalendarScreen(
                 item { Text("일정이 없어요", fontSize = 14.sp, color = Gray400, modifier = Modifier.padding(vertical = 24.dp)) }
             }
             items(displayEvents, key = { it.id }) { ev ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Gray50)
-                        .border(1.dp, Gray100, RoundedCornerShape(14.dp))
-                        .padding(13.dp, 13.dp, 8.dp, 13.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(Blue600))
-                    Spacer(Modifier.width(10.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(ev.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
-                        Text(ev.date, fontSize = 12.sp, color = Gray400)
-                    }
-                    IconButton(onClick = { viewModel.removeEvent(ev.id) }) {
-                        Icon(Icons.Default.Delete, null, tint = Gray300, modifier = Modifier.size(18.dp))
-                    }
-                }
+                EventCard(ev, onRemove = { viewModel.removeEvent(ev.id) })
             }
             item { Spacer(Modifier.height(8.dp)) }
         }
@@ -241,6 +226,7 @@ fun CalendarScreen(
         TalkPlusTabBar(active = activeTab, onTab = onTab)
     }
 
+    // EventCard composable — defined below
     // Add FAB
     // (skipped inline — handled by existing event dialog)
     if (showAdd) {
@@ -258,5 +244,45 @@ fun CalendarScreen(
             confirmButton = { TextButton(onClick = { viewModel.addEvent(title, dateStr, "", ""); showAdd = false }, enabled = title.isNotBlank()) { Text("추가") } },
             dismissButton = { TextButton(onClick = { showAdd = false }) { Text("취소") } },
         )
+    }
+}
+
+@Composable
+private fun EventCard(ev: CalendarEvent, onRemove: () -> Unit) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Gray50)
+            .border(1.dp, Gray100, RoundedCornerShape(14.dp))
+            .padding(13.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(Blue600))
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(ev.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                if (ev.placeName.isNotBlank()) {
+                    Text(ev.placeName, fontSize = 12.sp, color = Blue700, fontWeight = FontWeight.Medium)
+                }
+                Text(ev.date, fontSize = 12.sp, color = Gray400)
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Delete, null, tint = Gray300, modifier = Modifier.size(18.dp))
+            }
+        }
+        if (ev.placeUrl.isNotBlank()) {
+            TextButton(
+                onClick = {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ev.placeUrl)))
+                    } catch (_: Exception) {}
+                },
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+            ) {
+                Text("🗺️ 카카오맵 보기", fontSize = 12.sp, color = Blue600, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }

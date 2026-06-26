@@ -44,13 +44,15 @@ import com.navoodi.morimi.ui.theme.Gemma4Theme
 
 class MainActivity : ComponentActivity() {
 
-    // 알림 탭으로 진입 시 이동할 roomId — Compose State이므로 변경 시 자동 recompose
+    // 알림 탭으로 진입 시 이동할 roomId / 목적지 — Compose State이므로 변경 시 자동 recompose
     private var pendingRoomId by mutableStateOf<String?>(null)
+    private var pendingNavTo  by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 앱이 종료된 상태에서 알림 탭 → onCreate Intent에 roomId 포함
+        // 앱이 종료된 상태에서 알림 탭 → onCreate Intent에 roomId/navTo 포함
         pendingRoomId = intent.getStringExtra("roomId")
+        pendingNavTo  = intent.getStringExtra("navTo")
         enableEdgeToEdge()
         setContent {
             Gemma4Theme {
@@ -120,15 +122,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // 알림 탭 → 로그인 상태 확정 후 채팅방으로 이동
+                // 알림 탭 → 로그인 상태 확정 후 목적지로 이동
+                // navTo=="aiReport" 이면 AIReport 화면, 그 외엔 기존 채팅방 이동
                 LaunchedEffect(pendingRoomId, startupState) {
                     val id = pendingRoomId
                     if (id != null && startupState == StartupState.GoToHome) {
-                        navController.navigate(Screen.Chat.createRoute(id)) {
-                            // 백스택에 Chat만 쌓이지 않게 Home은 유지
-                            launchSingleTop = true
-                        }
+                        val destination = if (pendingNavTo == "aiReport")
+                            Screen.AIReport.createRoute(id)
+                        else
+                            Screen.Chat.createRoute(id)
+                        navController.navigate(destination) { launchSingleTop = true }
                         pendingRoomId = null
+                        pendingNavTo  = null
                     }
                 }
 
@@ -280,10 +285,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // 앱이 실행 중일 때 알림 탭 → onNewIntent로 roomId 수신
+    // 앱이 실행 중일 때 알림 탭 → onNewIntent로 roomId/navTo 수신
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         val roomId = intent.getStringExtra("roomId")
-        if (roomId != null) pendingRoomId = roomId
+        if (roomId != null) {
+            pendingRoomId = roomId
+            pendingNavTo  = intent.getStringExtra("navTo")
+        }
     }
 }

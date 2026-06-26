@@ -5,6 +5,7 @@ import com.navoodi.morimi.BuildConfig
 import com.navoodi.morimi.data.local.UserStatusEntity
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
+import com.navoodi.morimi.data.model.RecommendedPlace
 import com.navoodi.morimi.data.pipeline.OnDeviceLlmPort
 import com.navoodi.morimi.data.repository.FeedbackRepository
 import com.google.genai.Client
@@ -165,7 +166,8 @@ class AgentOrchestrator(
     private data class FcCallResult(
         val name: String,
         val args: Map<String, Any?>,
-        val result: String
+        val result: String,
+        val kakaoPlaces: List<KakaoPlace> = emptyList()
     )
 
     // ── 공개 진입점 ──────────────────────────────────────────────────────────
@@ -272,6 +274,7 @@ class AgentOrchestrator(
         var weatherResult = "날씨 정보 없음"
         var city = "미정"
         var meetingDate = "미정"
+        val collectedKakaoPlaces = mutableListOf<KakaoPlace>()
 
         while (true) {
             @Suppress("UNCHECKED_CAST")
@@ -292,9 +295,9 @@ class AgentOrchestrator(
                     val snapCity = city
                     val snapDate = meetingDate
                     async {
-                        val result = dispatchFunctionCall(fcName, args, snapCity, snapDate)
-                        Log.d(TAG, "함수 실행: $fcName → ${result.take(80)}")
-                        FcCallResult(fcName, args, result)
+                        val (resultText, kPlaces) = dispatchFunctionCall(fcName, args, snapCity, snapDate)
+                        Log.d(TAG, "함수 실행: $fcName → ${resultText.take(80)}")
+                        FcCallResult(fcName, args, resultText, kPlaces)
                     }
                 }.awaitAll()
             }
@@ -309,7 +312,10 @@ class AgentOrchestrator(
                         meetingDate = r.args["date"]?.toString()?.removeSurrounding("\"") ?: meetingDate
                         weatherResult = r.result
                     }
-                    "searchPlace" -> city = r.args["city"]?.toString()?.removeSurrounding("\"") ?: city
+                    "searchPlace" -> {
+                        city = r.args["city"]?.toString()?.removeSurrounding("\"") ?: city
+                        collectedKakaoPlaces.addAll(r.kakaoPlaces)
+                    }
                 }
                 funcParts.add(
                     Part.builder()
@@ -366,7 +372,18 @@ class AgentOrchestrator(
             items.forEach { appendLine("• $it") }
         }.trim()
 
-        Log.d(TAG, "JSON 파싱 완료 — 장소 ${places.size}곳, 활동 ${activities.size}개, 준비물 ${items.size}개")
+        val placesStructured = places.map { geminiStr ->
+            val (pName, reason) = parseGeminiPlaceEntry(geminiStr)
+            val matched = findKakaoMatch(pName, collectedKakaoPlaces)
+            RecommendedPlace(
+                name = pName.ifBlank { geminiStr },
+                address = matched?.let { it.roadAddress.ifBlank { it.address } } ?: "",
+                reason = reason,
+                placeUrl = matched?.url ?: ""
+            )
+        }
+
+        Log.d(TAG, "JSON 파싱 완료 — 장소 ${places.size}곳(매칭 ${placesStructured.count { it.placeUrl.isNotBlank() }}개), 활동 ${activities.size}개, 준비물 ${items.size}개")
 
         return GeminiCallResult(
             summary = MeetingSummary(
@@ -376,7 +393,10 @@ class AgentOrchestrator(
                 meetingDate = meetingDate,
                 recommendation = recommendation,
                 weather = weatherResult,
-                directions = ""
+                directions = "",
+                places = placesStructured,
+                activities = activities,
+                itemsToBring = items
             ),
             city = city
         )
@@ -387,24 +407,49 @@ class AgentOrchestrator(
         args: Map<String, Any?>,
         currentCity: String,
         currentDate: String
-    ): String = when (name) {
+    ): Pair<String, List<KakaoPlace>> = when (name) {
         "getWeather" -> {
             val c = args["city"]?.toString()?.removeSurrounding("\"")?.ifBlank { currentCity } ?: currentCity
             val d = args["date"]?.toString()?.removeSurrounding("\"")?.ifBlank { currentDate } ?: currentDate
-            WeatherService.getWeather(c, d)
+            WeatherService.getWeather(c, d) to emptyList()
         }
         "searchPlace" -> {
             val query = args["query"]?.toString()?.removeSurrounding("\"") ?: ""
-            val c = args["city"]?.toString()?.removeSurrounding("\"")?.ifBlank { currentCity } ?: currentCity
-            mockPlaceSearch(query, c)
+            val kakaoPlaces = KakaoLocalService.searchKeyword(query)
+            val text = if (kakaoPlaces.isEmpty()) {
+                "검색 결과 없음"
+            } else {
+                kakaoPlaces.joinToString("\n") { p ->
+                    val addr = p.roadAddress.ifBlank { p.address }
+                    buildString {
+                        append("• ${p.name}")
+                        if (addr.isNotBlank()) append(" ($addr)")
+                        if (p.phone.isNotBlank()) append(", ☎ ${p.phone}")
+                        if (p.url.isNotBlank()) append(", 지도: ${p.url}")
+                    }
+                }
+            }
+            text to kakaoPlaces
         }
         else -> {
             Log.w(TAG, "알 수 없는 함수 호출: $name")
-            "함수 미지원: $name"
+            "함수 미지원: $name" to emptyList()
         }
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
+
+    private fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
+        val idx = s.indexOfFirst { it == '—' || it == '–' || it == '-' }
+        return if (idx > 0) s.substring(0, idx).trim() to s.substring(idx + 1).trim()
+        else s.trim() to ""
+    }
+
+    private fun findKakaoMatch(name: String, candidates: List<KakaoPlace>): KakaoPlace? {
+        if (name.isBlank() || candidates.isEmpty()) return null
+        return candidates.firstOrNull { it.name == name }
+            ?: candidates.firstOrNull { it.name.contains(name) || name.contains(it.name) }
+    }
 
     private fun buildSystemPrompt(
         gemmaSum: String,
@@ -439,16 +484,6 @@ $gemmaSum
 4. 장소 2~3곳, 활동 2~3가지, 챙겨갈 것 3~5가지를 추천하세요.
 5. 반드시 제공된 JSON 스키마에 맞춰 응답하세요.
 6. 참가자 프로필의 선호/불호와 일정 제약을 엄격히 반영하세요.
-""".trimIndent()
-    }
-
-    private fun mockPlaceSearch(query: String, city: String): String {
-        val type = query.split(" ").lastOrNull() ?: "장소"
-        return """
-[$city 카카오맵 검색 결과 — Mock]
-1. $city $type 추천 A점 — 영업 중, 평점 4.5, 주차 가능
-2. $city $type 추천 B점 — 영업 중, 평점 4.3, 웨이팅 있음
-3. $city ${query.split(" ").firstOrNull() ?: "근처"} 분위기 맛집 — 영업 중, 평점 4.1
 """.trimIndent()
     }
 

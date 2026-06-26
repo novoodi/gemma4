@@ -23,7 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import android.widget.Toast
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -94,6 +96,18 @@ fun ChatScreen(
     val leaveState   by viewModel.leaveState.collectAsStateWithLifecycle()
     val listState     = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    // 화면에 남아 있는 사용자: 분석 완료 시 자동으로 AIReport 이동.
+    // resetSummaryState()로 Idle 복귀해 재진입 시 재navigate 방지.
+    LaunchedEffect(summaryState) {
+        if (summaryState is SummaryState.Success) {
+            navController.navigate(Screen.AIReport.createRoute(viewModel.roomId)) {
+                launchSingleTop = true
+            }
+            viewModel.resetSummaryState()
+        }
+    }
 
     val chatItems = remember(messages, currentUid) { buildChatItems(messages, currentUid) }
 
@@ -282,10 +296,13 @@ fun ChatScreen(
                 item(key = "ai_chip") {
                     Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
                         AssistChip(
+                            // 옵션 (a): 로딩 화면 없이 백그라운드 진행 + 완료 시 알림.
+                            // 화면에 남아 있으면 LaunchedEffect(summaryState)로 자동 이동.
                             onClick = {
                                 viewModel.summarize()
-                                navController.navigate(Screen.AILoading.createRoute(viewModel.roomId))
+                                Toast.makeText(context, "분석을 시작했어요. 끝나면 알림으로 알려드릴게요", Toast.LENGTH_LONG).show()
                             },
+                            enabled = summaryState !is SummaryState.Loading,
                             label = { Text("⚡ AI 요약 준비됨 — 추천 장소 3곳 발견", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Blue700) },
                             colors = AssistChipDefaults.assistChipColors(containerColor = Blue50),
                             border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = Blue100),
@@ -313,8 +330,9 @@ fun ChatScreen(
                 IconButton(
                     onClick = {
                         viewModel.summarize()
-                        navController.navigate(Screen.AILoading.createRoute(viewModel.roomId))
+                        Toast.makeText(context, "분석을 시작했어요. 끝나면 알림으로 알려드릴게요", Toast.LENGTH_LONG).show()
                     },
+                    enabled = summaryState !is SummaryState.Loading,
                 ) {
                     Icon(imageVector = GeminiIcon, contentDescription = "AI 요약", tint = White, modifier = Modifier.size(18.dp))
                 }

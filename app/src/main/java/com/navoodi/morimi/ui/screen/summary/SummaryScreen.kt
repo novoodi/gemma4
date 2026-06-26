@@ -75,7 +75,7 @@ class SummaryViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val isAddedToCalendar = CalendarRepository.events
-        .map { events -> events.any { it.roomId == roomId } }
+        .map { events -> events.any { it.roomId == roomId && it.placeName.isBlank() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     fun addToCalendar() {
