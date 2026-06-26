@@ -116,7 +116,9 @@ class MainActivity : ComponentActivity() {
                         TpTab.Profile  -> Screen.Profile.route
                     }
                     navController.navigate(route) {
-                        popUpTo(Screen.Home.route) { saveState = true }
+                        // graph.id는 NavGraph 컨테이너 자체 — 백스택 최하단에 항상 존재.
+                        // Home이 백스택에 없는 경우(알림 직접 진입 등)에도 안전하게 동작.
+                        popUpTo(navController.graph.id) { saveState = true }
                         launchSingleTop = true
                         restoreState = true
                     }

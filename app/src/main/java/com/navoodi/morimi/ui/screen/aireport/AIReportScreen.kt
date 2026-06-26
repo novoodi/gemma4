@@ -243,6 +243,13 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                         roomId = viewModel.roomId,
                         events = events,
                         navController = navController,
+                        onGoToCalendar = {
+                            navController.navigate(Screen.Calendar.route) {
+                                popUpTo(navController.graph.id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
                     )
                 }
             }
@@ -442,6 +449,7 @@ private fun FinishCard(
     roomId: String,
     events: List<CalendarEvent>,
     navController: NavController,
+    onGoToCalendar: () -> Unit,
 ) {
     val addedCount = events.count { it.roomId == roomId && it.placeName.isNotBlank() }
 
@@ -477,7 +485,7 @@ private fun FinishCard(
         }
 
         Button(
-            onClick = { navController.navigate(Screen.Calendar.route) },
+            onClick = onGoToCalendar,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Blue600),
