@@ -47,10 +47,15 @@ object WeatherService {
         taRegionMap.entries.firstOrNull { city.contains(it.key) }?.value ?: "11B10101"
 
     // 중기예보 발표시각 (하루 2회: 06시, 18시)
+    // 0~5시에는 오늘 06시 발표본이 아직 없으므로 전날 18시 발표본을 사용해야 한다.
     private fun getTmFc(): String {
         val now = LocalDateTime.now()
-        val baseHour = if (now.hour >= 18) 18 else 6
-        return now.toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE) +
+        val (baseDate, baseHour) = when {
+            now.hour >= 18 -> now.toLocalDate() to 18
+            now.hour >= 6  -> now.toLocalDate() to 6
+            else           -> now.toLocalDate().minusDays(1) to 18  // 0~5시: 전날 18시 발표본
+        }
+        return baseDate.format(DateTimeFormatter.BASIC_ISO_DATE) +
             String.format("%02d00", baseHour)
     }
 

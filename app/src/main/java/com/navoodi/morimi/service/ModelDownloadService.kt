@@ -147,6 +147,15 @@ class ModelDownloadService : Service() {
                 partFile.delete()
                 totalBytes = connection.contentLengthLong.takeIf { it > 0 } ?: EXPECTED_SIZE
             }
+            416 -> {
+                // .part 크기가 서버 파일과 같거나 초과 → Range 요청 불가.
+                // 스테일 .part를 삭제하고 Range 없이 전체 재다운로드로 자가복구.
+                // 삭제 후 existingSize=0 경로로 재진입하므로 다음 요청은 200이 되어 재귀는 1회로 종료된다.
+                Log.w("ModelDownloadService", "HTTP 416 — 스테일 .part 삭제 후 전체 재다운로드")
+                connection.disconnect()
+                partFile.delete()
+                return downloadToPartFile(partFile)
+            }
             else -> {
                 connection.disconnect()
                 throw Exception("서버 오류: HTTP $responseCode")

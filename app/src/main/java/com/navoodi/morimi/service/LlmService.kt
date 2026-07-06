@@ -35,11 +35,20 @@ class LlmService(private val context: Context) {
     val isModelAvailable: Boolean
         get() = File(modelPath).exists()
 
-    suspend fun initialize() = withContext(Dispatchers.IO) {
-        if (engine != null) return@withContext
-        val config = EngineConfig(modelPath = modelPath, backend = Backend.GPU())
-        engine = Engine(config)
-        engine!!.initialize()
+    suspend fun initialize() = engineMutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (engine != null) return@withContext          // 락 안에서 이중 확인 — 중복 엔진 생성 방지
+            val config = EngineConfig(modelPath = modelPath, backend = Backend.GPU())
+            val local = Engine(config)
+            try {
+                local.initialize()
+                engine = local                              // 초기화 성공 후에만 필드에 대입
+            } catch (e: Throwable) {
+                // 실패 시 필드를 null로 유지 → 다음 호출에서 재시도 가능 (미초기화 엔진 오염 방지)
+                runCatching { (local as? AutoCloseable)?.close() }
+                throw e
+            }
+        }
     }
 
     private fun closeConversation(conv: Any) {

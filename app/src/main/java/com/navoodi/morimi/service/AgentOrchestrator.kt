@@ -209,7 +209,7 @@ class AgentOrchestrator(
             try {
                 val callResult = callGeminiWithTools(prompt, roomId, eventTracker)
                 val guardrail = guardrailService.verify(
-                    text = callResult.summary.recommendation,
+                    placeNames = callResult.summary.places.map { it.name },
                     city = callResult.city
                 )
                 Log.d(TAG, "시도 $attempt Guardrail: passed=${guardrail.passed}")
@@ -440,9 +440,16 @@ class AgentOrchestrator(
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
     private fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
-        val idx = s.indexOfFirst { it == '—' || it == '–' || it == '-' }
-        return if (idx > 0) s.substring(0, idx).trim() to s.substring(idx + 1).trim()
-        else s.trim() to ""
+        // 장소명 = 주소 괄호'(' 또는 이유 구분 대시(—/–) 중 가장 먼저 나오는 지점 이전.
+        // ASCII '-'는 주소("상계로1길 14-11")·전화번호에 흔하므로 구분자로 쓰지 않는다.
+        val nameEnd = listOf(s.indexOf('('), s.indexOf('—'), s.indexOf('–'))
+            .filter { it >= 0 }
+            .minOrNull() ?: s.length
+        val name = s.substring(0, nameEnd).trim()
+        // 이유 = em/en 대시 뒤 (없으면 빈 문자열)
+        val dashIdx = s.indexOfFirst { it == '—' || it == '–' }
+        val reason = if (dashIdx >= 0) s.substring(dashIdx + 1).trim() else ""
+        return (name.ifBlank { s.trim() }) to reason
     }
 
     private fun findKakaoMatch(name: String, candidates: List<KakaoPlace>): KakaoPlace? {

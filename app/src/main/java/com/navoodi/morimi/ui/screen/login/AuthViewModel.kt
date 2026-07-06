@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
+import com.navoodi.morimi.data.repository.FcmRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -148,9 +149,13 @@ class AuthViewModel : ViewModel() {
     }
 
     fun signOut() {
-        auth.signOut()
-        _authState.value = AuthState.LoggedOut
-        _startupState.value = StartupState.GoToLogin
-        Log.d(TAG, "로그아웃 완료")
+        viewModelScope.launch {
+            // 로그아웃 전에 이 기기의 FCM 토큰을 제거 (uid가 유효할 때 수행해야 함)
+            FcmRepository.removeCurrentToken()
+            auth.signOut()
+            _authState.value = AuthState.LoggedOut
+            _startupState.value = StartupState.GoToLogin
+            Log.d(TAG, "로그아웃 완료")
+        }
     }
 }

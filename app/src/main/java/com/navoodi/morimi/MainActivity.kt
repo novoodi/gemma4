@@ -64,6 +64,8 @@ class MainActivity : ComponentActivity() {
 
                 // SplashScreen 애니메이션 완료 여부
                 var splashDone by remember { mutableStateOf(false) }
+                // 스플래시 완료 후 최초 네비게이션이 끝났는지 — 알림 딥링크 처리 주체를 구분해 레이스 방지
+                var initialNavDone by remember { mutableStateOf(false) }
 
                 // 로그인 완료 후 모델 유무에 따라 Home 또는 ModelDownload로 분기
                 fun homeOrDownload() =
@@ -105,6 +107,18 @@ class MainActivity : ComponentActivity() {
                     navController.navigate(destination) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
+                    // 알림 콜드스타트: 딥링크를 이 곳에서 함께 처리해 백스택을 [home, chat]으로 구성.
+                    // (별도 알림 effect가 splash 위에 chat을 쌓았다가 이 popUpTo에 함께 pop되는 레이스 방지)
+                    val id = pendingRoomId
+                    if (startupState == StartupState.GoToHome && id != null) {
+                        val deepLink = if (pendingNavTo == "aiReport")
+                            Screen.AIReport.createRoute(id)
+                        else
+                            Screen.Chat.createRoute(id)
+                        navController.navigate(deepLink) { launchSingleTop = true }
+                        clearPendingNav()
+                    }
+                    initialNavDone = true
                 }
 
                 fun goTab(tab: TpTab) {
@@ -124,18 +138,18 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // 알림 탭 → 로그인 상태 확정 후 목적지로 이동
+                // 앱 실행 중 알림 탭(onNewIntent) → 현재 백스택 위에 목적지 push.
+                // 콜드스타트 딥링크는 위 splash effect가 담당하므로, 여기선 최초 네비 완료 후에만 동작.
                 // navTo=="aiReport" 이면 AIReport 화면, 그 외엔 기존 채팅방 이동
-                LaunchedEffect(pendingRoomId, startupState) {
+                LaunchedEffect(pendingRoomId, startupState, initialNavDone) {
                     val id = pendingRoomId
-                    if (id != null && startupState == StartupState.GoToHome) {
+                    if (initialNavDone && id != null && startupState == StartupState.GoToHome) {
                         val destination = if (pendingNavTo == "aiReport")
                             Screen.AIReport.createRoute(id)
                         else
                             Screen.Chat.createRoute(id)
                         navController.navigate(destination) { launchSingleTop = true }
-                        pendingRoomId = null
-                        pendingNavTo  = null
+                        clearPendingNav()
                     }
                 }
 
@@ -296,5 +310,14 @@ class MainActivity : ComponentActivity() {
             pendingRoomId = roomId
             pendingNavTo  = intent.getStringExtra("navTo")
         }
+    }
+
+    // 딥링크 소비 후 pending 상태와 intent extra를 함께 제거.
+    // extra를 남겨두면 회전·프로세스 재생성 시 onCreate가 같은 intent에서 다시 읽어 과거 방으로 재이동함.
+    private fun clearPendingNav() {
+        pendingRoomId = null
+        pendingNavTo  = null
+        intent.removeExtra("roomId")
+        intent.removeExtra("navTo")
     }
 }

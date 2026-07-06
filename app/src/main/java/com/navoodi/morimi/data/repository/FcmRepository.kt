@@ -36,4 +36,25 @@ object FcmRepository {
             Log.e(TAG, "FCM 토큰 발급 실패", e)
         }
     }
+
+    /**
+     * 로그아웃 시 호출. 이 기기의 토큰을 현재 계정 fcmTokens에서 제거해
+     * 로그아웃 후에도 이전 계정 알림이 이 기기로 전송되는 것을 막는다.
+     * auth.signOut() 이전에(uid가 유효할 때) 호출해야 한다.
+     */
+    suspend fun removeCurrentToken() {
+        val uid = auth.currentUser?.uid ?: run {
+            Log.w(TAG, "removeCurrentToken: 로그인 사용자 없음 — 건너뜀")
+            return
+        }
+        try {
+            val token = FirebaseMessaging.getInstance().token.await()
+            db.collection("users").document(uid)
+                .set(mapOf("fcmTokens" to FieldValue.arrayRemove(token)), SetOptions.merge())
+                .await()
+            Log.d(TAG, "FCM 토큰 제거 완료 uid=$uid")
+        } catch (e: Exception) {
+            Log.e(TAG, "FCM 토큰 제거 실패", e)
+        }
+    }
 }

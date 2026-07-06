@@ -1,7 +1,9 @@
 package com.navoodi.morimi.data.repository
 
 import android.util.Log
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -32,6 +34,16 @@ object ChatRepository {
 
     private fun generateInviteCode(): String =
         (1..6).map { INVITE_ALPHABET.random() }.joinToString("")
+
+    // 시각 필드를 epoch millis로 읽는다.
+    // 신규 데이터는 서버 Timestamp, 아직 서버 확정 전 로컬 쓰기는 ESTIMATE로 추정값을 채우며,
+    // 레거시 데이터(Long millis)도 함께 지원한다.
+    private fun DocumentSnapshot.millisField(field: String): Long =
+        when (val v = get(field, DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)) {
+            is Timestamp -> v.toDate().time
+            is Number    -> v.toLong()
+            else         -> 0L
+        }
 
     val currentUid: String? get() = auth.currentUser?.uid
 
@@ -65,7 +77,7 @@ object ChatRepository {
                             createdAt = doc.getLong("createdAt") ?: 0L,
                             inviteCode = doc.getString("inviteCode") ?: "",
                             lastMessage = doc.getString("lastMessage") ?: "",
-                            lastMessageTime = doc.getLong("lastMessageTime") ?: 0L,
+                            lastMessageTime = doc.millisField("lastMessageTime"),
                         )
                     }.getOrNull()
                 } ?: emptyList()
@@ -118,7 +130,7 @@ object ChatRepository {
                             senderId = doc.getString("senderId") ?: return@mapNotNull null,
                             senderName = doc.getString("senderName") ?: "",
                             content = doc.getString("content") ?: "",
-                            timestamp = doc.getLong("timestamp") ?: 0L
+                            timestamp = doc.millisField("timestamp")
                         )
                     }.getOrNull()
                 } ?: emptyList()
@@ -204,7 +216,7 @@ object ChatRepository {
         try {
             db.collection("users").document(uid)
                 .collection("roomReads").document(roomId)
-                .set(hashMapOf("lastReadTime" to System.currentTimeMillis()))
+                .set(hashMapOf("lastReadTime" to FieldValue.serverTimestamp()))
                 .await()
         } catch (e: Exception) {
             Log.e(TAG, "updateLastReadTime 실패 roomId=$roomId", e)
@@ -227,7 +239,7 @@ object ChatRepository {
                     return@addSnapshotListener
                 }
                 val reads = snap?.documents?.associate { doc ->
-                    doc.id to (doc.getLong("lastReadTime") ?: 0L)
+                    doc.id to doc.millisField("lastReadTime")
                 } ?: emptyMap()
                 trySend(reads)
             }
@@ -242,7 +254,9 @@ object ChatRepository {
             return false
         }
         return try {
-            val now = System.currentTimeMillis()
+            // 서버 타임스탬프 — 기기 시계 오차와 무관하게 순서·안읽음 판정을 일관되게 유지.
+            // batch 커밋 시 세 필드 모두 동일한 서버 시각으로 해석된다.
+            val now = FieldValue.serverTimestamp()
             val msgRef = db.collection("rooms").document(roomId)
                 .collection("messages").document()
             val roomRef = db.collection("rooms").document(roomId)
@@ -280,6 +294,8 @@ object ChatRepository {
     ) {
         try {
             val uid = currentUid
+            // 실 메시지가 서버 Timestamp를 쓰므로 필드 타입을 통일한다(orderBy 정상 동작).
+            val ts = Timestamp(java.util.Date(timestamp))
             val msgRef = db.collection("rooms").document(roomId)
                 .collection("messages").document()
             val roomRef = db.collection("rooms").document(roomId)
@@ -288,16 +304,16 @@ object ChatRepository {
                 "senderId" to senderId,
                 "senderName" to senderName,
                 "content" to content,
-                "timestamp" to timestamp,
+                "timestamp" to ts,
             ))
             batch.update(roomRef, mapOf(
                 "lastMessage" to content,
-                "lastMessageTime" to timestamp,
+                "lastMessageTime" to ts,
             ))
             if (uid != null) {
                 val myReadRef = db.collection("users").document(uid)
                     .collection("roomReads").document(roomId)
-                batch.set(myReadRef, hashMapOf("lastReadTime" to timestamp))
+                batch.set(myReadRef, hashMapOf("lastReadTime" to ts))
             }
             batch.commit().await()
         } catch (e: Exception) {
@@ -325,7 +341,13 @@ object ChatRepository {
         }
     }
 
-    // ── 방 나가기: 순서 보장(멤버 자격 유지한 채 정리) ─────────────────────
+    // ── 방 나가기: 트랜잭션으로 본인 제거 + 남은 인원 원자적 판정 ─────────────
+
+    private data class LeaveTxResult(
+        val existed: Boolean,
+        val remaining: Int,
+        val inviteCode: String?,
+    )
 
     suspend fun leaveRoom(roomId: String) {
         val uid = currentUid ?: run {
@@ -335,30 +357,43 @@ object ChatRepository {
         try {
             val roomRef = db.collection("rooms").document(roomId)
 
-            // 1. 현재 participantUids 확인
-            val roomSnap = roomRef.get().await()
-            val participants = (roomSnap.get("participantUids") as? List<*>)
-                ?.filterIsInstance<String>() ?: emptyList()
+            // 1. 트랜잭션: 본인 uid 제거 + 제거 후 남은 인원 수를 원자적으로 확정.
+            //    동시 퇴장 시 Firestore가 트랜잭션을 직렬화/재시도하므로,
+            //    두 번째 퇴장은 첫 번째의 제거가 반영된 상태를 읽는다 → 유령 방 방지.
+            val result = db.runTransaction { tx ->
+                val snap = tx.get(roomRef)
+                if (!snap.exists()) {
+                    return@runTransaction LeaveTxResult(existed = false, remaining = 0, inviteCode = null)
+                }
+                val participants = (snap.get("participantUids") as? List<*>)
+                    ?.filterIsInstance<String>() ?: emptyList()
+                val remaining = participants.filterNot { it == uid }
+                tx.update(roomRef, "participantUids", remaining)
+                LeaveTxResult(existed = true, remaining = remaining.size, inviteCode = snap.getString("inviteCode"))
+            }.await()
 
-            if (participants.size == 1 && participants[0] == uid) {
-                // 마지막 멤버 — arrayRemove 없이 멤버 상태 유지하며 정리
+            if (!result.existed) {
+                Log.d(TAG, "leaveRoom: 방이 이미 삭제됨 roomId=$roomId")
+                return
+            }
+
+            if (result.remaining == 0) {
+                // 내가 마지막 멤버 — 부수 리소스 정리 (하위 컬렉션 삭제는 트랜잭션 불가)
                 // a) messages 하위 컬렉션 500개 단위 batch 삭제
                 deleteMessagesSubcollection(roomId)
 
                 // b) inviteCodes/{code} 문서 삭제
-                val inviteCode = roomSnap.getString("inviteCode")
+                val inviteCode = result.inviteCode
                 if (!inviteCode.isNullOrEmpty()) {
                     db.collection("inviteCodes").document(inviteCode).delete().await()
                     Log.d(TAG, "leaveRoom: inviteCode=$inviteCode 삭제 완료")
                 }
 
-                // c) rooms/{roomId} 문서 삭제
+                // c) rooms/{roomId} 문서 삭제 (복구 여지를 위해 마지막에)
                 roomRef.delete().await()
                 Log.d(TAG, "leaveRoom: 마지막 멤버 — 방 삭제 완료 roomId=$roomId")
             } else {
-                // 다른 멤버가 있음 — 본인 uid만 제거
-                roomRef.update("participantUids", FieldValue.arrayRemove(uid)).await()
-                Log.d(TAG, "leaveRoom: 본인 제거 완료 roomId=$roomId 남은 멤버=${participants.size - 1}")
+                Log.d(TAG, "leaveRoom: 본인 제거 완료 roomId=$roomId 남은 멤버=${result.remaining}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "leaveRoom 실패 roomId=$roomId", e)
