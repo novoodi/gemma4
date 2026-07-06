@@ -62,11 +62,11 @@ class CalendarViewModel : ViewModel() {
 
 private data class Category(val id: String, val color: Color, val bg: Color)
 private val categories = listOf(
-    Category("전체", Blue600, Blue50),
-    Category("학교",  Purple600, Purple50),
-    Category("운동",  Success600, Success50),
-    Category("회의",  Warning600, Warning50),
-    Category("모임",  Blue600, Blue50),
+    Category("전체", MoColors.brand,    MoColors.brandSubtle),
+    Category("학교",  MoColors.activity, MoColors.activityBg),
+    Category("운동",  MoColors.place,    MoColors.placeBg),
+    Category("회의",  MoColors.item,     MoColors.itemBg),
+    Category("모임",  MoColors.brand,    MoColors.brandSubtle),
 )
 private val weekLabels = listOf("월", "화", "수", "목", "금", "토", "일")
 
@@ -86,16 +86,16 @@ fun CalendarScreen(
 
     val eventDates = remember(events) { events.groupBy { it.date } }
 
-    Column(modifier = Modifier.fillMaxSize().background(White).statusBarsPadding()) {
+    Column(modifier = Modifier.fillMaxSize().background(MoColors.surfaceBase).statusBarsPadding()) {
         // Header
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = MoSpacing.screenFocused, end = MoSpacing.screenFocused, top = 4.dp, bottom = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("캘린더", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Gray900, letterSpacing = (-0.5).sp)
-            Box(Modifier.size(38.dp).clip(CircleShape).background(Gray50), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Search, null, tint = Gray600, modifier = Modifier.size(19.dp))
+            Text("캘린더", style = MaterialTheme.typography.headlineMedium, color = MoColors.textPrimary)
+            Box(Modifier.size(38.dp).clip(CircleShape).background(MoColors.surfaceSubtle), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Search, "검색", tint = MoColors.textSecondary, modifier = Modifier.size(19.dp))
             }
         }
 
@@ -110,12 +110,12 @@ fun CalendarScreen(
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(if (active) cat.color else White)
-                        .border(1.5.dp, if (active) cat.color else Gray200, CircleShape)
+                        .background(if (active) cat.color else MoColors.surfaceBase)
+                        .border(1.5.dp, if (active) cat.color else MoColors.border, CircleShape)
                         .clickable { activeCat = cat.id }
                         .padding(horizontal = 16.dp, vertical = 7.dp),
                 ) {
-                    Text(cat.id, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (active) White else Gray500)
+                    Text(cat.id, fontFamily = Pretendard, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = if (active) MoColors.textOnBrand else MoColors.textSecondary)
                 }
             }
         }
@@ -126,12 +126,12 @@ fun CalendarScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Gray100).clickable { viewModel.prevMonth() }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.ChevronLeft, null, tint = Gray600, modifier = Modifier.size(16.dp))
+            Box(Modifier.size(32.dp).clip(MoRadius.sm).background(MoColors.surfaceSubtle).clickable { viewModel.prevMonth() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.ChevronLeft, "이전 달", tint = MoColors.textSecondary, modifier = Modifier.size(16.dp))
             }
-            Text("${ym.year}년 ${ym.monthValue}월", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Gray900)
-            Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(Gray100).clickable { viewModel.nextMonth() }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.ChevronRight, null, tint = Gray600, modifier = Modifier.size(16.dp))
+            Text("${ym.year}년 ${ym.monthValue}월", fontFamily = Pretendard, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+            Box(Modifier.size(32.dp).clip(MoRadius.sm).background(MoColors.surfaceSubtle).clickable { viewModel.nextMonth() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.ChevronRight, "다음 달", tint = MoColors.textSecondary, modifier = Modifier.size(16.dp))
             }
         }
 
@@ -145,8 +145,8 @@ fun CalendarScreen(
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 weekLabels.forEachIndexed { i, d ->
-                    Text(d, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium, color = if (i >= 5) Blue600 else Gray400)
+                    Text(d, fontFamily = Pretendard, modifier = Modifier.weight(1f), textAlign = TextAlign.Center, fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium, color = if (i >= 5) MoColors.brand else MoColors.textTertiary)
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -171,8 +171,8 @@ fun CalendarScreen(
                                     .padding(1.dp)
                                     .clip(CircleShape)
                                     .background(when {
-                                        isToday -> Blue600
-                                        isSel   -> Gray200
+                                        isToday -> MoColors.brand
+                                        isSel   -> MoColors.borderStrong
                                         hasMatch && activeCat != "전체" -> catInfo.bg
                                         else -> Color.Transparent
                                     })
@@ -183,18 +183,19 @@ fun CalendarScreen(
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
                                         d.toString(),
+                                        fontFamily = Pretendard,
                                         fontSize = 14.sp,
                                         fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
                                         color = when {
-                                            isToday -> White
-                                            isSel   -> Gray900
-                                            dimmed  -> Gray300
-                                            else    -> Gray800
+                                            isToday -> MoColors.textOnBrand
+                                            isSel   -> MoColors.textPrimary
+                                            dimmed  -> MoColors.textDisabled
+                                            else    -> MoColors.textPrimary
                                         },
                                     )
                                     if (!dayEvs.isNullOrEmpty() && !isToday) {
                                         Box(Modifier.size(4.dp).clip(CircleShape)
-                                            .background(if (activeCat == "전체") Blue600 else catInfo.color))
+                                            .background(if (activeCat == "전체") MoColors.brand else catInfo.color))
                                     }
                                 }
                             }
@@ -205,7 +206,7 @@ fun CalendarScreen(
         }
 
         // Upcoming events
-        Text("다가오는 일정", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Gray900,
+        Text("다가오는 일정", style = MaterialTheme.typography.titleMedium, color = MoColors.textPrimary,
             modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp))
 
         LazyColumn(
@@ -215,7 +216,7 @@ fun CalendarScreen(
         ) {
             val displayEvents = if (selDate != null) events.filter { it.date == selDate.toString() } else events
             if (displayEvents.isEmpty()) {
-                item { Text("일정이 없어요", fontSize = 14.sp, color = Gray400, modifier = Modifier.padding(vertical = 24.dp)) }
+                item { Text("일정이 없어요", fontFamily = Pretendard, fontSize = 14.sp, color = MoColors.textTertiary, modifier = Modifier.padding(vertical = 24.dp)) }
             }
             items(displayEvents, key = { it.id }) { ev ->
                 EventCard(ev, onRemove = { viewModel.removeEvent(ev.id) })
@@ -253,23 +254,23 @@ private fun EventCard(ev: CalendarEvent, onRemove: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Gray50)
-            .border(1.dp, Gray100, RoundedCornerShape(14.dp))
+            .clip(MoRadius.lg)
+            .background(MoColors.surfaceSubtle)
+            .border(1.dp, MoColors.border, MoRadius.lg)
             .padding(13.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(Blue600))
+            Box(Modifier.size(8.dp).clip(CircleShape).background(MoColors.brand))
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(ev.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                Text(ev.title, fontFamily = Pretendard, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MoColors.textPrimary)
                 if (ev.placeName.isNotBlank()) {
-                    Text(ev.placeName, fontSize = 12.sp, color = Blue700, fontWeight = FontWeight.Medium)
+                    Text(ev.placeName, fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.place, fontWeight = FontWeight.Medium)
                 }
-                Text(ev.date, fontSize = 12.sp, color = Gray400)
+                Text(ev.date, fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textTertiary)
             }
             IconButton(onClick = onRemove) {
-                Icon(Icons.Default.Delete, null, tint = Gray300, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Delete, "삭제", tint = MoColors.textDisabled, modifier = Modifier.size(18.dp))
             }
         }
         if (ev.placeUrl.isNotBlank()) {
@@ -281,7 +282,7 @@ private fun EventCard(ev: CalendarEvent, onRemove: () -> Unit) {
                 },
                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
             ) {
-                Text("🗺️ 카카오맵 보기", fontSize = 12.sp, color = Blue600, fontWeight = FontWeight.Medium)
+                Text("🗺️ 카카오맵 보기", fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.brand, fontWeight = FontWeight.Medium)
             }
         }
     }

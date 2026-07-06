@@ -42,6 +42,7 @@ import com.navoodi.morimi.data.model.RecommendedPlace
 import com.navoodi.morimi.data.repository.CalendarRepository
 import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.navigation.Screen
+import com.navoodi.morimi.ui.components.GeminiIcon
 import com.navoodi.morimi.ui.theme.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -118,7 +119,7 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF8F9FC))
+            .background(MoColors.surfaceSubtle)
             .statusBarsPadding()
     ) {
         // Nav bar
@@ -126,31 +127,31 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
             modifier = Modifier
                 .fillMaxWidth()
                 .height(44.dp)
-                .background(White)
+                .background(MoColors.surfaceCard)
                 .padding(horizontal = 8.dp),
         ) {
             IconButton(
                 onClick = { navController.popBackStack() },
                 modifier = Modifier.align(Alignment.CenterStart),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = Gray900)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = MoColors.textPrimary)
             }
             Text(
                 "AI 추천",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Gray900,
+                color = MoColors.textPrimary,
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-        HorizontalDivider(color = Gray100)
+        HorizontalDivider(color = MoColors.border)
 
         // Model unavailable banner
         if (!viewModel.isModelAvailable) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFFFFF3CD))
+                    .background(MoAmber50)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
@@ -159,13 +160,13 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                     "⚠️ AI 모델 미설치 · 샘플 결과",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF856404),
+                    color = MoAmber600,
                 )
                 TextButton(
                     onClick = { navController.navigate(Screen.ModelDownload.route) },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    Text("다운로드", fontSize = 12.sp, color = Blue600, fontWeight = FontWeight.Bold)
+                    Text("다운로드", fontSize = 12.sp, color = MoColors.brand, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -178,7 +179,7 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                 Text(
                     "채팅방에서 AI 요약 버튼을 눌러\n분석을 시작해주세요",
                     fontSize = 14.sp,
-                    color = Gray400,
+                    color = MoColors.textTertiary,
                     textAlign = TextAlign.Center,
                     lineHeight = 22.sp,
                 )
@@ -208,7 +209,7 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                             .padding(horizontal = 3.dp)
                             .size(if (pagerState.currentPage == i) 8.dp else 5.dp)
                             .clip(CircleShape)
-                            .background(if (pagerState.currentPage == i) Blue600 else Gray200)
+                            .background(if (pagerState.currentPage == i) MoColors.brand else MoColors.borderStrong)
                     )
                 }
             }
@@ -276,17 +277,17 @@ private fun MeetingCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(White)
-                .border(1.dp, Gray100, RoundedCornerShape(16.dp))
+                .background(MoColors.surfaceCard)
+                .border(1.dp, MoColors.border, RoundedCornerShape(16.dp))
                 .padding(16.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 14.dp),
             ) {
-                Icon(GeminiIcon, contentDescription = null, tint = Blue600, modifier = Modifier.size(18.dp))
+                Icon(GeminiIcon, contentDescription = null, tint = MoColors.brand, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("AI가 분석한 모임 정보", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Blue600)
+                Text("AI가 분석한 모임 정보", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MoColors.brand)
             }
             val rows = listOf(
                 Triple("📅", "날짜", summary.meetingDate.ifBlank { "미정" }),
@@ -303,12 +304,12 @@ private fun MeetingCard(
                 ) {
                     Text(icon, fontSize = 16.sp)
                     Column {
-                        Text(label, fontSize = 11.sp, color = Gray400, fontWeight = FontWeight.Medium)
+                        Text(label, fontSize = 11.sp, color = MoColors.textTertiary, fontWeight = FontWeight.Medium)
                         Spacer(Modifier.height(2.dp))
-                        Text(value, fontSize = 14.sp, color = Gray900, fontWeight = FontWeight.Medium)
+                        Text(value, fontSize = 14.sp, color = MoColors.textPrimary, fontWeight = FontWeight.Medium)
                     }
                 }
-                if (i < rows.size - 1) HorizontalDivider(color = Gray100, modifier = Modifier.padding(vertical = 5.dp))
+                if (i < rows.size - 1) HorizontalDivider(color = MoColors.border, modifier = Modifier.padding(vertical = 5.dp))
             }
         }
 
@@ -318,7 +319,7 @@ private fun MeetingCard(
             shape = RoundedCornerShape(12.dp),
             enabled = !isAdded,
             colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = if (isAdded) Success600 else Blue600,
+                contentColor = if (isAdded) MoColors.place else MoColors.brand,
             ),
         ) {
             Text(
@@ -357,23 +358,23 @@ private fun PlaceCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(White)
-                .border(1.dp, Gray100, RoundedCornerShape(16.dp))
+                .background(MoColors.surfaceCard)
+                .border(1.dp, MoColors.border, RoundedCornerShape(16.dp))
                 .padding(16.dp),
         ) {
-            Text(place.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
+            Text(place.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
             if (place.address.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
-                Text(place.address, fontSize = 13.sp, color = Gray500)
+                Text(place.address, fontSize = 13.sp, color = MoColors.textSecondary)
             }
             if (place.reason.isNotBlank()) {
-                HorizontalDivider(color = Gray100, modifier = Modifier.padding(vertical = 12.dp))
+                HorizontalDivider(color = MoColors.border, modifier = Modifier.padding(vertical = 12.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    Icon(GeminiIcon, contentDescription = null, tint = Blue600, modifier = Modifier.size(14.dp))
-                    Text(place.reason, fontSize = 14.sp, color = Gray700, lineHeight = 22.sp)
+                    Icon(GeminiIcon, contentDescription = null, tint = MoColors.brand, modifier = Modifier.size(14.dp))
+                    Text(place.reason, fontSize = 14.sp, color = MoColors.textSecondary, lineHeight = 22.sp)
                 }
             }
         }
@@ -387,7 +388,7 @@ private fun PlaceCard(
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5722)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MoColors.brand),
             ) {
                 Text("🗺️ 카카오맵에서 보기", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -398,8 +399,8 @@ private fun PlaceCard(
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = if (isAdded) Gray200 else Blue600,
-                contentColor = if (isAdded) Gray600 else White,
+                containerColor = if (isAdded) MoColors.borderStrong else MoColors.brand,
+                contentColor = if (isAdded) MoColors.textSecondary else MoColors.textOnBrand,
             ),
         ) {
             Text(
@@ -425,17 +426,17 @@ private fun ListCard(title: String, items: List<String>) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(White)
-                .border(1.dp, Gray100, RoundedCornerShape(16.dp))
+                .background(MoColors.surfaceCard)
+                .border(1.dp, MoColors.border, RoundedCornerShape(16.dp))
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Gray900)
-            HorizontalDivider(color = Gray100)
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+            HorizontalDivider(color = MoColors.border)
             items.forEach { item ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("•", fontSize = 14.sp, color = Blue600, fontWeight = FontWeight.Bold)
-                    Text(item, fontSize = 14.sp, color = Gray700, lineHeight = 22.sp)
+                    Text("•", fontSize = 14.sp, color = MoColors.brand, fontWeight = FontWeight.Bold)
+                    Text(item, fontSize = 14.sp, color = MoColors.textSecondary, lineHeight = 22.sp)
                 }
             }
         }
@@ -464,21 +465,21 @@ private fun FinishCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(Brush.linearGradient(listOf(Color(0xFFEFF8FF), Color(0xFFDBEAFE))))
-                .border(1.dp, Blue100, RoundedCornerShape(16.dp))
+                .background(Brush.linearGradient(listOf(MoBlue50, MoBlue100)))
+                .border(1.dp, MoBlue100, RoundedCornerShape(16.dp))
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text("✅", fontSize = 40.sp)
-            Text("마무리", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Gray900)
+            Text("마무리", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
             Text(
                 text = if (addedCount > 0)
                     "마음에 드는 장소 ${addedCount}곳을\n캘린더에 담았어요!"
                 else
                     "마음에 드는 장소를\n캘린더에 담아보세요",
                 fontSize = 15.sp,
-                color = Gray700,
+                color = MoColors.textSecondary,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Center,
             )
@@ -488,7 +489,7 @@ private fun FinishCard(
             onClick = onGoToCalendar,
             modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Blue600),
+            colors = ButtonDefaults.buttonColors(containerColor = MoColors.brand),
         ) {
             Text("📅 캘린더에서 확인하기", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
@@ -503,15 +504,3 @@ private fun FinishCard(
     }
 }
 
-// ── GeminiIcon ────────────────────────────────────────────────────────────────
-
-private val GeminiIcon: ImageVector = ImageVector.Builder(
-    name = "Gemini", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f,
-).path(fill = SolidColor(Color.Black)) {
-    moveTo(12f, 2f)
-    curveTo(11.5f, 7.8f, 7.8f, 11.5f, 2f, 12f)
-    curveTo(7.8f, 12.5f, 11.5f, 16.2f, 12f, 22f)
-    curveTo(12.5f, 16.2f, 16.2f, 12.5f, 22f, 12f)
-    curveTo(16.2f, 11.5f, 12.5f, 7.8f, 12f, 2f)
-    close()
-}.build()

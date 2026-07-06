@@ -85,6 +85,10 @@ class ChatViewModel(
 
     private var compressionJob: Job? = null
 
+    // 백그라운드 성향 압축 진행 여부 — "스피너 없는" 플로팅 상태배지 표시용
+    private val _isCompressing = MutableStateFlow(false)
+    val isCompressing: StateFlow<Boolean> = _isCompressing.asStateFlow()
+
     fun onInputChange(text: String) { _inputText.value = text }
 
     fun sendMessage() {
@@ -103,7 +107,12 @@ class ChatViewModel(
 
     private fun triggerStatusCompression(msgs: List<Message>) {
         compressionJob = viewModelScope.launch(Dispatchers.IO) {
-            compressionPipeline.compress(roomId, msgs)
+            _isCompressing.value = true
+            try {
+                compressionPipeline.compress(roomId, msgs)
+            } finally {
+                _isCompressing.value = false
+            }
         }
     }
 

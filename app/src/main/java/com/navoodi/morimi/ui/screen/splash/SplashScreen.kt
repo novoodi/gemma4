@@ -47,36 +47,36 @@ fun SplashScreen(onDone: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = Gray900, fontWeight = FontWeight.Bold, fontSize = 48.sp, letterSpacing = (-2).sp)) {
+                    withStyle(SpanStyle(color = MoColors.textPrimary, fontWeight = FontWeight.Bold, fontSize = 48.sp, letterSpacing = (-2).sp)) {
                         append("Talk")
                     }
-                    withStyle(SpanStyle(color = Blue600, fontWeight = FontWeight.Bold, fontSize = 52.sp, letterSpacing = (-2).sp)) {
+                    withStyle(SpanStyle(color = MoColors.brand, fontWeight = FontWeight.Bold, fontSize = 52.sp, letterSpacing = (-2).sp)) {
                         append("+")
                     }
                 }
             )
             Spacer(Modifier.height(8.dp))
-            Text("Smart Group Scheduling", color = Gray500, fontSize = 15.sp)
+            Text("Smart Group Scheduling", color = MoColors.textSecondary, fontSize = 15.sp)
             Spacer(Modifier.height(64.dp))
             Box(
                 modifier = Modifier
                     .width(200.dp)
                     .height(3.dp)
                     .clip(RoundedCornerShape(99.dp))
-                    .background(Gray100)
+                    .background(MoColors.border)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(animatedProgress)
                         .clip(RoundedCornerShape(99.dp))
-                        .background(Blue600)
+                        .background(MoColors.brand)
                 )
             }
         }
         Text(
             "Preparing your experience…",
-            color = Gray400,
+            color = MoColors.textTertiary,
             fontSize = 12.sp,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp)
         )

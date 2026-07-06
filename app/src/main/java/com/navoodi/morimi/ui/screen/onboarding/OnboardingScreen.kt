@@ -58,7 +58,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
 
             // Skip
             Box(modifier = Modifier.fillMaxWidth().padding(end = 28.dp), contentAlignment = Alignment.CenterEnd) {
-                Text("건너뛰기", color = Gray400, fontSize = 14.sp,
+                Text("건너뛰기", color = MoColors.textTertiary, fontSize = 14.sp,
                     modifier = Modifier.clickable { onDone() })
             }
 
@@ -69,7 +69,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                 text = slides[idx].title,
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
-                color = Gray900,
+                color = MoColors.textPrimary,
                 lineHeight = 34.sp,
                 modifier = Modifier.padding(horizontal = 32.dp)
             )
@@ -80,7 +80,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
             Text(
                 text = slides[idx].sub,
                 fontSize = 14.sp,
-                color = Gray500,
+                color = MoColors.textSecondary,
                 lineHeight = 22.sp,
                 modifier = Modifier.padding(horizontal = 32.dp)
             )
@@ -102,7 +102,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                         modifier = Modifier
                             .width(w).height(8.dp)
                             .clip(CircleShape)
-                            .background(if (i == idx) Blue600 else Gray200)
+                            .background(if (i == idx) MoColors.brand else MoColors.borderStrong)
                             .clickable { idx = i }
                     )
                 }
@@ -117,7 +117,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                     .padding(bottom = 40.dp)
                     .height(52.dp),
                 shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Blue600)
+                colors = ButtonDefaults.buttonColors(containerColor = MoColors.brand)
             ) {
                 Text(
                     if (isLast) "시작하기" else "다음",

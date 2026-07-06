@@ -39,11 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.navoodi.morimi.navigation.Screen
-import com.navoodi.morimi.ui.theme.Blue600
-import com.navoodi.morimi.ui.theme.Gray100
-import com.navoodi.morimi.ui.theme.Gray400
-import com.navoodi.morimi.ui.theme.Gray500
-import com.navoodi.morimi.ui.theme.Gray900
+import com.navoodi.morimi.ui.theme.*
 
 @Composable
 fun ModelDownloadScreen(
@@ -82,12 +78,12 @@ fun ModelDownloadScreen(
 
         Text("🤖", fontSize = 56.sp)
         Spacer(Modifier.height(16.dp))
-        Text("AI 모델 준비", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Gray900)
+        Text("AI 모델 준비", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
         Spacer(Modifier.height(8.dp))
         Text(
             text = "온디바이스 AI 기능을 사용하려면\nGemma 모델 (약 2.6 GB)이 필요합니다.",
             fontSize = 14.sp,
-            color = Gray500,
+            color = MoColors.textSecondary,
             textAlign = TextAlign.Center,
             lineHeight = 22.sp,
         )
@@ -127,14 +123,14 @@ fun ModelDownloadScreen(
                 LinearProgressIndicator(
                     progress = { s.progress },
                     modifier = Modifier.fillMaxWidth().height(8.dp),
-                    color = Blue600,
-                    trackColor = Gray100,
+                    color = MoColors.brand,
+                    trackColor = MoColors.border,
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = "${(s.progress * 100).toInt()}%  ·  ${formatSize(s.downloadedBytes)} / ${formatSize(s.totalBytes)}",
                     fontSize = 13.sp,
-                    color = Gray500,
+                    color = MoColors.textSecondary,
                 )
             }
             Spacer(Modifier.height(24.dp))
@@ -176,7 +172,7 @@ fun ModelDownloadScreen(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = when (state) {
                         is ModelDownloadUiState.Downloading -> MaterialTheme.colorScheme.error
-                        else -> Blue600
+                        else -> MoColors.brand
                     },
                 ),
             ) {
@@ -200,7 +196,7 @@ fun ModelDownloadScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("나중에 (샘플 AI로 계속)", fontSize = 14.sp, color = Gray400)
+                    Text("나중에 (샘플 AI로 계속)", fontSize = 14.sp, color = MoColors.textTertiary)
                 }
             }
         }

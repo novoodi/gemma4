@@ -48,11 +48,11 @@ fun VotingScreen(navController: NavController) {
             modifier = Modifier.fillMaxWidth().height(44.dp).background(White).padding(horizontal = 8.dp),
         ) {
             IconButton(onClick = { navController.popBackStack() }, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = Gray900)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = MoColors.textPrimary)
             }
-            Text("Vote on a Spot", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Gray900, modifier = Modifier.align(Alignment.Center))
+            Text("장소 투표", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MoColors.textPrimary, modifier = Modifier.align(Alignment.Center))
         }
-        HorizontalDivider(color = Gray100)
+        HorizontalDivider(color = MoColors.border)
 
         Column(
             modifier = Modifier
@@ -61,9 +61,9 @@ fun VotingScreen(navController: NavController) {
                 .padding(horizontal = 16.dp, vertical = 20.dp),
         ) {
             Text(
-                if (submitted) "✓ Your vote was recorded! Waiting for others…"
-                else "Choose your preferred meeting spot. 3 members haven't voted yet.",
-                fontSize = 14.sp, color = Gray500,
+                if (submitted) "✓ 투표가 완료됐어요! 다른 멤버를 기다리고 있어요…"
+                else "마음에 드는 모임 장소를 골라주세요. 아직 3명이 투표하지 않았어요.",
+                fontSize = 14.sp, color = MoColors.textSecondary,
                 modifier = Modifier.padding(bottom = 20.dp),
             )
 
@@ -79,7 +79,7 @@ fun VotingScreen(navController: NavController) {
                         .padding(bottom = 12.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(White)
-                        .border(2.dp, if (isSelected) Blue600 else Gray200, RoundedCornerShape(14.dp))
+                        .border(2.dp, if (isSelected) MoColors.brand else MoColors.borderStrong, RoundedCornerShape(14.dp))
                         .clickable(enabled = !submitted) { myVote = p.id }
                         .padding(16.dp),
                 ) {
@@ -89,23 +89,23 @@ fun VotingScreen(navController: NavController) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
-                            Text(p.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Gray900)
-                            Text("${p.type} · ${p.dist}", fontSize = 12.sp, color = Gray500)
+                            Text(p.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+                            Text("${p.type} · ${p.dist}", fontSize = 12.sp, color = MoColors.textSecondary)
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             if (isSelected) {
                                 Box(
-                                    modifier = Modifier.size(20.dp).clip(CircleShape).background(Blue600),
+                                    modifier = Modifier.size(20.dp).clip(CircleShape).background(MoColors.brand),
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Icon(Icons.Default.Check, contentDescription = null, tint = White, modifier = Modifier.size(12.dp))
                                 }
                             }
                             Text(
-                                "$count vote${if (count != 1) "s" else ""}",
+                                "${count}표",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Blue600 else Gray600,
+                                color = if (isSelected) MoColors.brand else MoColors.textSecondary,
                             )
                         }
                     }
@@ -118,19 +118,19 @@ fun VotingScreen(navController: NavController) {
                             .fillMaxWidth()
                             .height(6.dp)
                             .clip(RoundedCornerShape(99.dp))
-                            .background(Gray100),
+                            .background(MoColors.border),
                     ) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(animPct)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(99.dp))
-                                .background(if (isSelected) Blue600 else Gray400),
+                                .background(if (isSelected) MoColors.brand else MoColors.textTertiary),
                         )
                     }
 
                     Spacer(Modifier.height(4.dp))
-                    Text("${(pct * 100).toInt()}%", fontSize = 11.sp, color = Gray400)
+                    Text("${(pct * 100).toInt()}%", fontSize = 11.sp, color = MoColors.textTertiary)
                 }
             }
         }
@@ -150,21 +150,21 @@ fun VotingScreen(navController: NavController) {
                     shape = RoundedCornerShape(12.dp),
                     enabled = myVote != null,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (myVote != null) Blue600 else Gray200,
-                        disabledContainerColor = Gray200,
+                        containerColor = if (myVote != null) MoColors.brand else MoColors.borderStrong,
+                        disabledContainerColor = MoColors.borderStrong,
                     ),
                 ) {
-                    Text("Submit Vote", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
-                        color = if (myVote != null) White else Gray400)
+                    Text("투표하기", fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+                        color = if (myVote != null) White else MoColors.textTertiary)
                 }
             } else {
                 Button(
                     onClick = { navController.popBackStack() },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Success600),
+                    colors = ButtonDefaults.buttonColors(containerColor = MoColors.place),
                 ) {
-                    Text("Back to Chat ✓", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("채팅으로 돌아가기 ✓", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

@@ -98,12 +98,12 @@ fun LoginScreen(
 
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = Gray900, fontWeight = FontWeight.ExtraBold, fontSize = 48.sp, letterSpacing = (-2).sp)) { append("Talk") }
-                    withStyle(SpanStyle(color = Blue600, fontWeight = FontWeight.ExtraBold, fontSize = 52.sp, letterSpacing = (-2).sp)) { append("+") }
+                    withStyle(SpanStyle(color = MoColors.textPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 48.sp, letterSpacing = (-2).sp)) { append("Talk") }
+                    withStyle(SpanStyle(color = MoColors.brand, fontWeight = FontWeight.ExtraBold, fontSize = 52.sp, letterSpacing = (-2).sp)) { append("+") }
                 }
             )
             Spacer(Modifier.height(6.dp))
-            Text("함께하는 대화, 더 스마트하게", color = Gray400, fontSize = 13.sp, letterSpacing = 0.2.sp)
+            Text("함께하는 대화, 더 스마트하게", color = MoColors.textTertiary, fontSize = 13.sp, letterSpacing = 0.2.sp)
 
             Spacer(Modifier.weight(0.08f))
 
@@ -132,7 +132,7 @@ fun LoginScreen(
             if (isLoading) {
                 Spacer(Modifier.height(20.dp))
                 CircularProgressIndicator(
-                    color = Blue600,
+                    color = MoColors.brand,
                     strokeWidth = 2.dp,
                     modifier = Modifier.size(24.dp),
                 )
@@ -143,13 +143,13 @@ fun LoginScreen(
             Text(
                 buildAnnotatedString {
                     append("계속하면 ")
-                    withStyle(SpanStyle(color = Blue600)) { append("이용약관") }
+                    withStyle(SpanStyle(color = MoColors.brand)) { append("이용약관") }
                     append(" 및 ")
-                    withStyle(SpanStyle(color = Blue600)) { append("개인정보처리방침") }
+                    withStyle(SpanStyle(color = MoColors.brand)) { append("개인정보처리방침") }
                     append("에 동의하는 것으로 간주합니다")
                 },
                 fontSize = 11.sp,
-                color = Gray400,
+                color = MoColors.textTertiary,
                 modifier = Modifier.padding(horizontal = 28.dp).padding(bottom = 32.dp),
             )
         }
@@ -162,7 +162,7 @@ fun LoginScreen(
                 action = {
                     Text(
                         "닫기",
-                        color = Blue600,
+                        color = MoColors.brand,
                         modifier = Modifier.clickable { authViewModel.clearSignInError() },
                     )
                 },

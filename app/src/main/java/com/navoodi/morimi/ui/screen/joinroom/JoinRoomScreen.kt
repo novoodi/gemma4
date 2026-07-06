@@ -79,18 +79,18 @@ fun JoinRoomScreen(navController: NavController) {
                 onClick = { navController.popBackStack() },
                 modifier = Modifier.align(Alignment.CenterStart),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = Gray900)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = MoColors.textPrimary)
             }
             Text(
                 "코드로 입장",
                 modifier = Modifier.align(Alignment.Center),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Gray900,
+                color = MoColors.textPrimary,
             )
         }
 
-        HorizontalDivider(color = Gray100)
+        HorizontalDivider(color = MoColors.border)
 
         Column(
             modifier = Modifier
@@ -104,7 +104,7 @@ fun JoinRoomScreen(navController: NavController) {
                 "초대 코드 입력",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
-                color = Gray900,
+                color = MoColors.textPrimary,
             )
 
             Spacer(Modifier.height(8.dp))
@@ -112,7 +112,7 @@ fun JoinRoomScreen(navController: NavController) {
             Text(
                 "방장에게 받은 6자리 초대 코드를 입력하세요",
                 fontSize = 14.sp,
-                color = Gray400,
+                color = MoColors.textTertiary,
                 textAlign = TextAlign.Center,
             )
 
@@ -128,13 +128,13 @@ fun JoinRoomScreen(navController: NavController) {
                     errorMessage = null
                 },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("AB3K7Z", color = Gray300, fontFamily = FontFamily.Monospace, fontSize = 20.sp) },
+                placeholder = { Text("AB3K7Z", color = MoColors.textDisabled, fontFamily = FontFamily.Monospace, fontSize = 20.sp) },
                 textStyle = TextStyle(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
-                    color = Gray900,
+                    color = MoColors.textPrimary,
                     letterSpacing = 6.sp,
                 ),
                 singleLine = true,
@@ -147,8 +147,8 @@ fun JoinRoomScreen(navController: NavController) {
                 keyboardActions = KeyboardActions(onDone = { submit() }),
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Blue600,
-                    unfocusedBorderColor = Gray200,
+                    focusedBorderColor = MoColors.brand,
+                    unfocusedBorderColor = MoColors.borderStrong,
                     errorBorderColor = MaterialTheme.colorScheme.error,
                 ),
             )
@@ -171,7 +171,7 @@ fun JoinRoomScreen(navController: NavController) {
                     .height(52.dp),
                 enabled = codeInput.length == 6 && !isLoading,
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Blue600),
+                colors = ButtonDefaults.buttonColors(containerColor = MoColors.brand),
             ) {
                 if (isLoading) {
                     CircularProgressIndicator(

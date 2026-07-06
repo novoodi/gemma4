@@ -30,12 +30,13 @@ import com.navoodi.morimi.ui.components.TpTab
 import com.navoodi.morimi.ui.screen.home.HomeViewModel
 import com.navoodi.morimi.ui.theme.*
 
+// 아바타 배경/전경 — 도메인 노드 팔레트
 private val avatarColors = listOf(
-    Pair(Blue100,    Blue700),
-    Pair(Purple50,   Purple600),
-    Pair(Success50,  Success600),
-    Pair(Color(0xFFFEF0C7), Color(0xFFB54708)),
-    Pair(Color(0xFFFEE4E2), Error600),
+    Pair(MoColors.participantBg, MoColors.participant),
+    Pair(MoColors.activityBg,    MoColors.activity),
+    Pair(MoColors.placeBg,       MoColors.place),
+    Pair(MoColors.itemBg,        MoColors.item),
+    Pair(MoColors.warnBg,        MoColors.warn),
 )
 
 @Composable
@@ -52,22 +53,22 @@ fun ChatListScreen(
     val showDialog by viewModel.showCreateDialog.collectAsStateWithLifecycle()
     var roomNameInput by remember { mutableStateOf("") }
 
-    Box(modifier = Modifier.fillMaxSize().background(White).statusBarsPadding()) {
+    Box(modifier = Modifier.fillMaxSize().background(MoColors.surfaceBase).statusBarsPadding()) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 12.dp),
+                    .padding(start = MoSpacing.screenFocused, end = MoSpacing.screenFocused, top = 4.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("채팅방", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Gray900, letterSpacing = (-0.5).sp)
+                Text("채팅방", style = MaterialTheme.typography.headlineLarge, color = MoColors.textPrimary)
                 Box(
-                    modifier = Modifier.size(38.dp).clip(CircleShape).background(Gray50),
+                    modifier = Modifier.size(38.dp).clip(CircleShape).background(MoColors.surfaceSubtle),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Outlined.Search, contentDescription = null, tint = Gray600, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Outlined.Search, contentDescription = "검색", tint = MoColors.textSecondary, modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -84,7 +85,7 @@ fun ChatListScreen(
                 if (rooms.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                            Text("모임방을 만들어보세요", color = Gray400, fontSize = 14.sp)
+                            Text("모임방을 만들어보세요", color = MoColors.textTertiary, fontFamily = Pretendard, fontSize = 14.sp)
                         }
                     }
                 }
@@ -106,22 +107,22 @@ fun ChatListScreen(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(Gray100)
+                    .background(MoColors.surfaceSubtle)
                     .clickable { onJoinRoom() },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Login, contentDescription = "코드로 입장", tint = Gray700, modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.Login, contentDescription = "코드로 입장", tint = MoColors.textSecondary, modifier = Modifier.size(20.dp))
             }
             // 새 방 만들기 FAB
             Box(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(Blue600)
+                    .background(MoColors.brand)
                     .clickable { viewModel.showCreateDialog() },
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Edit, contentDescription = "새 모임방", tint = White, modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.Edit, contentDescription = "새 모임방", tint = MoColors.textOnBrand, modifier = Modifier.size(22.dp))
             }
         }
     }
@@ -172,16 +173,16 @@ private fun RoomRow(room: ChatRoom, colorIdx: Int, hasUnread: Boolean, onClick: 
                 modifier = Modifier.size(52.dp).clip(CircleShape).background(bg),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(initials, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = fg)
+                Text(initials, fontFamily = Pretendard, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = fg)
             }
             if (hasUnread) {
                 Box(
                     modifier = Modifier
                         .size(13.dp)
                         .align(Alignment.TopEnd)
-                        .border(2.dp, White, CircleShape)
+                        .border(2.dp, MoColors.surfaceBase, CircleShape)
                         .clip(CircleShape)
-                        .background(Blue600),
+                        .background(MoColors.brand),
                 )
             }
         }
@@ -194,30 +195,32 @@ private fun RoomRow(room: ChatRoom, colorIdx: Int, hasUnread: Boolean, onClick: 
             ) {
                 Text(
                     room.name,
+                    fontFamily = Pretendard,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Gray900,
+                    color = MoColors.textPrimary,
                     modifier = Modifier.weight(1f),
                     overflow = TextOverflow.Ellipsis,
                     maxLines = 1,
                 )
                 if (timeLabel.isNotEmpty()) {
                     Spacer(Modifier.width(8.dp))
-                    Text(timeLabel, fontSize = 12.sp, color = Gray400)
+                    Text(timeLabel, fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textTertiary)
                 }
             }
             Spacer(Modifier.height(3.dp))
             Text(
                 preview,
+                fontFamily = Pretendard,
                 fontSize = 13.sp,
-                color = if (room.lastMessage.isEmpty()) Gray300 else Gray400,
+                color = if (room.lastMessage.isEmpty()) MoColors.textDisabled else MoColors.textTertiary,
                 overflow = TextOverflow.Ellipsis,
                 maxLines = 1,
             )
         }
     }
 
-    Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 22.dp).background(Gray50))
+    Box(Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 22.dp).background(MoColors.border))
 }
 
 private fun formatRoomTime(timestamp: Long): String {

@@ -51,21 +51,21 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                 modifier = Modifier
                     .size(64.dp)
                     .clip(CircleShape)
-                    .background(Success50)
-                    .border(2.dp, Success600, CircleShape),
+                    .background(MoColors.placeBg)
+                    .border(2.dp, MoColors.place, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Default.Check, null, tint = Success600, modifier = Modifier.size(28.dp))
+                Icon(Icons.Default.Check, null, tint = MoColors.place, modifier = Modifier.size(28.dp))
             }
             Spacer(Modifier.height(16.dp))
-            Text("저장됐어요", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
+            Text("저장됐어요", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
             Spacer(Modifier.height(4.dp))
-            Text("프로필이 업데이트됐습니다", fontSize = 14.sp, color = Gray500)
+            Text("프로필이 업데이트됐습니다", fontSize = 14.sp, color = MoColors.textSecondary)
         }
         return
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Gray50).statusBarsPadding()) {
+    Column(modifier = Modifier.fillMaxSize().background(MoColors.surfaceSubtle).statusBarsPadding()) {
         // Nav bar
         Box(
             modifier = Modifier
@@ -75,14 +75,14 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                 .padding(horizontal = 8.dp),
         ) {
             TextButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
-                Text("취소", fontSize = 15.sp, color = Gray600, fontWeight = FontWeight.Normal)
+                Text("취소", fontSize = 15.sp, color = MoColors.textSecondary, fontWeight = FontWeight.Normal)
             }
-            Text("프로필 편집", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Gray900, modifier = Modifier.align(Alignment.Center))
+            Text("프로필 편집", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MoColors.textPrimary, modifier = Modifier.align(Alignment.Center))
             TextButton(onClick = { saved = true }, modifier = Modifier.align(Alignment.CenterEnd)) {
-                Text("저장", fontSize = 15.sp, color = Blue600, fontWeight = FontWeight.SemiBold)
+                Text("저장", fontSize = 15.sp, color = MoColors.brand, fontWeight = FontWeight.SemiBold)
             }
         }
-        HorizontalDivider(color = Gray100)
+        HorizontalDivider(color = MoColors.border)
 
         Column(
             modifier = Modifier
@@ -99,10 +99,10 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
             ) {
                 Box {
                     Box(
-                        modifier = Modifier.size(88.dp).clip(CircleShape).background(Blue100),
+                        modifier = Modifier.size(88.dp).clip(CircleShape).background(MoBlue100),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("나", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Blue700)
+                        Text("나", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = MoColors.brand)
                     }
                     Box(
                         modifier = Modifier
@@ -110,7 +110,7 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                             .align(Alignment.BottomEnd)
                             .offset((-2).dp, (-2).dp)
                             .clip(CircleShape)
-                            .background(Gray900)
+                            .background(MoColors.textPrimary)
                             .border(2.5.dp, White, CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -118,10 +118,10 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                Text("사진 변경", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Blue600)
+                Text("사진 변경", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MoColors.brand)
             }
 
-            HorizontalDivider(color = Gray100)
+            HorizontalDivider(color = MoColors.border)
 
             // Form
             Column(
@@ -138,7 +138,7 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                     shape = RoundedCornerShape(10.dp),
                     colors = fieldColors(focusedField == "name"),
                 )
-                Text("그룹 채팅에서 보이는 이름이에요", fontSize = 11.sp, color = Gray400)
+                Text("그룹 채팅에서 보이는 이름이에요", fontSize = 11.sp, color = MoColors.textTertiary)
 
                 FieldLabel("소개글")
                 OutlinedTextField(
@@ -148,7 +148,7 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                     shape = RoundedCornerShape(10.dp),
                     colors = fieldColors(focusedField == "bio"),
                 )
-                Text("${bio.length}/60", fontSize = 11.sp, color = Gray400, modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.End))
+                Text("${bio.length}/60", fontSize = 11.sp, color = MoColors.textTertiary, modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.End))
 
                 FieldLabel("지역")
                 OutlinedTextField(
@@ -165,20 +165,20 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Gray50)
-                        .border(1.5.dp, Gray100, RoundedCornerShape(10.dp))
+                        .background(MoColors.surfaceSubtle)
+                        .border(1.5.dp, MoColors.border, RoundedCornerShape(10.dp))
                         .padding(13.dp, 13.dp, 13.dp, 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(Icons.Default.Check, null, tint = Success600, modifier = Modifier.size(14.dp))
-                    Text("010-1234-5678", fontSize = 15.sp, color = Gray500, modifier = Modifier.weight(1f))
-                    Text("인증됨", fontSize = 12.sp, color = Success600, fontWeight = FontWeight.Medium)
+                    Icon(Icons.Default.Check, null, tint = MoColors.place, modifier = Modifier.size(14.dp))
+                    Text("010-1234-5678", fontSize = 15.sp, color = MoColors.textSecondary, modifier = Modifier.weight(1f))
+                    Text("인증됨", fontSize = 12.sp, color = MoColors.place, fontWeight = FontWeight.Medium)
                 }
-                Text("전화번호는 변경할 수 없어요", fontSize = 11.sp, color = Gray400)
+                Text("전화번호는 변경할 수 없어요", fontSize = 11.sp, color = MoColors.textTertiary)
             }
 
-            HorizontalDivider(color = Gray100)
+            HorizontalDivider(color = MoColors.border)
 
             // Status
             Column(modifier = Modifier.background(White).padding(20.dp)) {
@@ -191,18 +191,18 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                             modifier = Modifier
                                 .padding(bottom = 8.dp)
                                 .clip(CircleShape)
-                                .background(if (sel) Blue50 else White)
-                                .border(1.5.dp, if (sel) Blue600 else Gray200, CircleShape)
+                                .background(if (sel) MoColors.brandSubtle else White)
+                                .border(1.5.dp, if (sel) MoColors.brand else MoColors.borderStrong, CircleShape)
                                 .clickable { status = s }
                                 .padding(horizontal = 14.dp, vertical = 8.dp),
                         ) {
-                            Text(s, fontSize = 13.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, color = if (sel) Blue700 else Gray600)
+                            Text(s, fontSize = 13.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, color = if (sel) MoColors.brand else MoColors.textSecondary)
                         }
                     }
                 }
             }
 
-            HorizontalDivider(color = Gray100)
+            HorizontalDivider(color = MoColors.border)
 
             // Danger zone
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -210,13 +210,13 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                     onClick = {},
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Gray600),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MoColors.textSecondary),
                 ) { Text("계정 비활성화", fontSize = 14.sp, fontWeight = FontWeight.Medium) }
                 OutlinedButton(
                     onClick = {},
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Error600),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MoColors.warningText),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFECDCA)),
                 ) { Text("계정 삭제", fontSize = 14.sp, fontWeight = FontWeight.Medium) }
             }
@@ -236,8 +236,8 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
                 shape = RoundedCornerShape(12.dp),
                 enabled = name.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (name.isNotBlank()) Blue600 else Gray200,
-                    disabledContainerColor = Gray200,
+                    containerColor = if (name.isNotBlank()) MoColors.brand else MoColors.borderStrong,
+                    disabledContainerColor = MoColors.borderStrong,
                 ),
             ) {
                 Text("변경사항 저장", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
@@ -248,13 +248,13 @@ fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
 
 @Composable
 private fun FieldLabel(text: String) {
-    Text(text.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Gray500, letterSpacing = 0.06.sp)
+    Text(text.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MoColors.textSecondary, letterSpacing = 0.06.sp)
 }
 
 @Composable
 private fun fieldColors(focused: Boolean) = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor   = Blue300,
-    unfocusedBorderColor = Gray200,
+    focusedBorderColor   = MoColors.brand,
+    unfocusedBorderColor = MoColors.borderStrong,
     focusedContainerColor   = White,
     unfocusedContainerColor = White,
 )

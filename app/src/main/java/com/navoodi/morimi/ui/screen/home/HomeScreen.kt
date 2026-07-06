@@ -6,11 +6,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,30 +48,38 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(White)
+            .background(MoColors.surfaceBase)
             .statusBarsPadding()
     ) {
         // Header
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 22.dp, end = 22.dp, top = 2.dp, bottom = 14.dp),
+                .padding(start = MoSpacing.screenFocused, end = MoSpacing.screenFocused, top = 2.dp, bottom = 14.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top,
         ) {
             Column {
-                Text(today.format(DATE_FORMATTER), color = Gray400, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                Text("오늘", color = Gray900, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
+                Text(
+                    today.format(DATE_FORMATTER),
+                    color = MoColors.textTertiary,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    "오늘",
+                    color = MoColors.textPrimary,
+                    style = MaterialTheme.typography.displayMedium,
+                )
             }
             Box(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(Gray50)
-                    .padding(top = 4.dp),
+                    .background(MoColors.surfaceSubtle),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Notifications, contentDescription = null, tint = Gray600, modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.Notifications, contentDescription = "알림", tint = MoColors.textSecondary, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -91,8 +99,8 @@ fun HomeScreen(
                 ) {
                     Text(
                         day,
-                        fontSize = 11.sp,
-                        color = if (isToday) Blue600 else Gray400,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isToday) MoColors.brand else MoColors.textTertiary,
                         fontWeight = if (isToday) FontWeight.SemiBold else FontWeight.Normal,
                     )
                     Spacer(Modifier.height(6.dp))
@@ -100,23 +108,24 @@ fun HomeScreen(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(if (isToday) Blue600 else Color.Transparent),
+                            .background(if (isToday) MoColors.brand else Color.Transparent),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             date.dayOfMonth.toString(),
+                            fontFamily = Pretendard,
                             fontSize = 14.sp,
                             fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
                             color = when {
-                                isToday -> White
-                                i < todayDayIdx -> Gray300
-                                else -> Gray700
+                                isToday -> MoColors.textOnBrand
+                                i < todayDayIdx -> MoColors.textDisabled
+                                else -> MoColors.textSecondary
                             },
                         )
                     }
                     if (isToday) {
                         Spacer(Modifier.height(4.dp))
-                        Box(Modifier.size(4.dp).clip(CircleShape).background(Blue600))
+                        Box(Modifier.size(4.dp).clip(CircleShape).background(MoColors.brand))
                     }
                 }
             }
@@ -127,7 +136,7 @@ fun HomeScreen(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = MoSpacing.screenOpen)
                 .padding(bottom = 12.dp),
         ) {
             SectionLabel("오늘 일정")
@@ -142,7 +151,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .width(1.5.dp)
                                 .fillMaxHeight()
-                                .background(Gray100)
+                                .background(MoColors.border)
                                 .align(Alignment.Center)
                         )
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -154,8 +163,8 @@ fun HomeScreen(
                                             .padding(top = 20.dp)
                                             .size(if (ev.isUpcoming) 14.dp else 10.dp)
                                             .clip(CircleShape)
-                                            .background(if (ev.isUpcoming) Blue600 else White)
-                                            .border(2.dp, if (ev.isUpcoming) Blue600 else Gray300, CircleShape)
+                                            .background(if (ev.isUpcoming) MoColors.brand else MoColors.surfaceBase)
+                                            .border(2.dp, if (ev.isUpcoming) MoColors.brand else MoColors.borderStrong, CircleShape)
                                     )
                                 }
                             }
@@ -169,18 +178,18 @@ fun HomeScreen(
                     ) {
                         uiState.todayEvents.forEach { ev ->
                             val cardH = if (ev.isUpcoming) 116.dp else 80.dp
-                            val bg = if (ev.isUpcoming) Blue600 else Gray50
-                            val textColor = if (ev.isUpcoming) White else Gray900
+                            val bg = if (ev.isUpcoming) MoColors.brand else MoColors.surfaceSubtle
+                            val textColor = if (ev.isUpcoming) MoColors.textOnBrand else MoColors.textPrimary
                             Box(
                                 modifier = Modifier
                                     .height(cardH)
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .clip(MoRadius.lg)
                                     .background(bg)
                                     .border(
                                         if (ev.isUpcoming) 0.dp else 1.dp,
-                                        if (ev.isUpcoming) Color.Transparent else Gray100,
-                                        RoundedCornerShape(14.dp),
+                                        if (ev.isUpcoming) Color.Transparent else MoColors.border,
+                                        MoRadius.lg,
                                     )
                                     .then(
                                         if (ev.chatId != null)
@@ -194,12 +203,13 @@ fun HomeScreen(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                     ) {
-                                        Text(ev.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textColor)
+                                        Text(ev.title, fontFamily = Pretendard, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = textColor)
                                         if (ev.location.isNotBlank()) {
                                             Text(
                                                 ev.location,
+                                                fontFamily = Pretendard,
                                                 fontSize = 12.sp,
-                                                color = if (ev.isUpcoming) White.copy(0.8f) else Gray400,
+                                                color = if (ev.isUpcoming) MoColors.textOnBrand.copy(0.8f) else MoColors.textTertiary,
                                             )
                                         }
                                     }
@@ -211,15 +221,15 @@ fun HomeScreen(
                                                     modifier = Modifier
                                                         .size(26.dp)
                                                         .clip(CircleShape)
-                                                        .background(White.copy(0.25f))
-                                                        .border(1.5.dp, White.copy(0.6f), CircleShape),
+                                                        .background(MoColors.textOnBrand.copy(0.25f))
+                                                        .border(1.5.dp, MoColors.textOnBrand.copy(0.6f), CircleShape),
                                                     contentAlignment = Alignment.Center,
                                                 ) {
-                                                    Text(initial, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = White)
+                                                    Text(initial, fontFamily = Pretendard, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MoColors.textOnBrand)
                                                 }
                                             }
                                             Spacer(Modifier.width(8.dp))
-                                            Text("+${ev.memberCount}명 참석", fontSize = 11.sp, color = White.copy(0.8f))
+                                            Text("+${ev.memberCount}명 참석", fontFamily = Pretendard, fontSize = 11.sp, color = MoColors.textOnBrand.copy(0.8f))
                                         }
                                     }
                                 }
@@ -240,9 +250,9 @@ fun HomeScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Gray50)
-                                .border(1.dp, Gray100, RoundedCornerShape(14.dp))
+                                .clip(MoRadius.lg)
+                                .background(MoColors.surfaceSubtle)
+                                .border(1.dp, MoColors.border, MoRadius.lg)
                                 .then(
                                     if (ev.chatId != null)
                                         Modifier.clickable { onOpenChat(ev.chatId) }
@@ -253,17 +263,18 @@ fun HomeScreen(
                         ) {
                             Text(
                                 ev.location.ifBlank { "—" },
+                                fontFamily = Pretendard,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Blue600,
+                                color = MoColors.brand,
                             )
                             Spacer(Modifier.width(14.dp))
-                            Box(Modifier.width(1.dp).height(32.dp).background(Gray200))
+                            Box(Modifier.width(1.dp).height(32.dp).background(MoColors.border))
                             Spacer(Modifier.width(14.dp))
                             Column {
-                                Text(ev.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Gray900)
+                                Text(ev.title, fontFamily = Pretendard, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MoColors.textPrimary)
                                 if (ev.memberCount > 0) {
-                                    Text("${ev.memberCount}명", fontSize = 12.sp, color = Gray400)
+                                    Text("${ev.memberCount}명", fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textTertiary)
                                 }
                             }
                         }
@@ -279,11 +290,10 @@ fun HomeScreen(
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text = text.uppercase(),
-        fontSize = 12.sp,
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
         fontWeight = FontWeight.SemiBold,
-        color = Gray400,
-        letterSpacing = 0.04.sp,
+        color = MoColors.textTertiary,
         modifier = Modifier.padding(bottom = 14.dp),
     )
 }
@@ -296,6 +306,6 @@ private fun EmptyState(message: String) {
             .height(60.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(message, fontSize = 13.sp, color = Gray400)
+        Text(message, fontFamily = Pretendard, fontSize = 13.sp, color = MoColors.textTertiary)
     }
 }

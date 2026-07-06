@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,28 +67,28 @@ fun MyPageScreen(
                         onLogout()
                     }
                 }) {
-                    Text("로그아웃", color = Error600, fontWeight = FontWeight.SemiBold)
+                    Text("로그아웃", color = MoColors.warningText, fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showLogoutDialog = false }) {
-                    Text("취소", color = Gray500)
+                    Text("취소", color = MoColors.textSecondary)
                 }
             },
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Gray50).statusBarsPadding()) {
+    Column(modifier = Modifier.fillMaxSize().background(MoColors.surfaceSubtle).statusBarsPadding()) {
         // Header
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(White)
-                .padding(start = 22.dp, end = 22.dp, top = 4.dp, bottom = 10.dp),
+                .background(MoColors.surfaceBase)
+                .padding(start = MoSpacing.screenFocused, end = MoSpacing.screenFocused, top = 4.dp, bottom = 10.dp),
         ) {
-            Text("마이페이지", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Gray900, letterSpacing = (-0.5).sp)
+            Text("마이페이지", style = MaterialTheme.typography.headlineMedium, color = MoColors.textPrimary)
         }
-        HorizontalDivider(color = Gray100)
+        HorizontalDivider(color = MoColors.border)
 
         Column(
             modifier = Modifier
@@ -100,8 +99,8 @@ fun MyPageScreen(
             Box(
                 modifier = Modifier
                     .padding(16.dp, 12.dp, 16.dp, 0.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(White)
+                    .clip(MoRadius.lg)
+                    .background(MoColors.surfaceCard)
                     .clickable(onClick = onEdit),
             ) {
                 Row(
@@ -112,17 +111,17 @@ fun MyPageScreen(
                     Box(
                         modifier = Modifier
                             .size(46.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Blue600),
+                            .clip(MoRadius.md)
+                            .background(MoColors.brand),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("T+", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = White)
+                        Text("T+", fontFamily = Pretendard, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MoColors.textOnBrand)
                     }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("김민준", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Gray900)
-                        Text("프로필 보기 · 설정", fontSize = 12.sp, color = Gray400)
+                        Text("김민준", fontFamily = Pretendard, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+                        Text("프로필 보기 · 설정", fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textTertiary)
                     }
-                    Icon(Icons.Default.ChevronRight, null, tint = Gray300)
+                    Icon(Icons.Default.ChevronRight, null, tint = MoColors.textDisabled)
                 }
             }
 
@@ -156,16 +155,16 @@ fun MyPageScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
-                            Text("AI 모델 다운로드", fontSize = 15.sp, color = Blue600, fontWeight = FontWeight.Medium)
-                            Text("약 2.6 GB · 샘플 AI 사용 중", fontSize = 12.sp, color = Gray400)
+                            Text("AI 모델 다운로드", fontFamily = Pretendard, fontSize = 15.sp, color = MoColors.brand, fontWeight = FontWeight.Medium)
+                            Text("약 2.6 GB · 샘플 AI 사용 중", fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textTertiary)
                         }
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Blue600)
+                                .clip(MoRadius.sm)
+                                .background(MoColors.brand)
                                 .padding(horizontal = 10.dp, vertical = 4.dp),
                         ) {
-                            Text("다운로드", fontSize = 12.sp, color = White, fontWeight = FontWeight.Bold)
+                            Text("다운로드", fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textOnBrand, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -199,8 +198,10 @@ fun MyPageScreen(
 
 @Composable
 private fun SectionLabel(text: String) {
-    Text(text, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Gray400,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp).padding(bottom = 0.dp))
+    Text(
+        text, fontFamily = Pretendard, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MoColors.textTertiary,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp).padding(bottom = 0.dp),
+    )
     Spacer(Modifier.height(8.dp))
 }
 
@@ -209,7 +210,7 @@ private fun SettingsGroup(margin: Boolean = true, content: @Composable ColumnSco
     Column(
         modifier = Modifier
             .then(if (margin) Modifier.padding(horizontal = 0.dp) else Modifier)
-            .background(White),
+            .background(MoColors.surfaceBase),
         content = content,
     )
 }
@@ -230,10 +231,10 @@ private fun SettingsRowChevron(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 15.sp, color = if (danger) Error600 else Gray900)
+        Text(label, fontFamily = Pretendard, fontSize = 15.sp, color = if (danger) MoColors.warningText else MoColors.textPrimary)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (value != null) Text(value, fontSize = 14.sp, color = Gray400)
-            if (showChevron) Icon(Icons.Default.ChevronRight, null, tint = Gray300, modifier = Modifier.size(18.dp))
+            if (value != null) Text(value, fontFamily = Pretendard, fontSize = 14.sp, color = MoColors.textTertiary)
+            if (showChevron) Icon(Icons.Default.ChevronRight, null, tint = MoColors.textDisabled, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -245,7 +246,7 @@ private fun SettingsRowToggle(label: String, on: Boolean, onToggle: (Boolean) ->
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, fontSize = 15.sp, color = Gray900)
+        Text(label, fontFamily = Pretendard, fontSize = 15.sp, color = MoColors.textPrimary)
         TpToggle(on = on, onToggle = { onToggle(!on) })
     }
 }
@@ -257,7 +258,7 @@ fun TpToggle(on: Boolean, onToggle: () -> Unit) {
             .width(48.dp)
             .height(28.dp)
             .clip(RoundedCornerShape(99.dp))
-            .background(if (on) Blue600 else Gray300)
+            .background(if (on) MoColors.brand else MoColors.borderStrong)
             .clickable(onClick = onToggle),
     ) {
         Box(
@@ -266,12 +267,12 @@ fun TpToggle(on: Boolean, onToggle: () -> Unit) {
                 .size(22.dp)
                 .align(if (on) Alignment.CenterEnd else Alignment.CenterStart)
                 .clip(RoundedCornerShape(99.dp))
-                .background(Color.White),
+                .background(MoColors.surfaceBase),
         )
     }
 }
 
 @Composable
 private fun SettingsDivider() {
-    HorizontalDivider(color = Gray100, modifier = Modifier.padding(horizontal = 20.dp))
+    HorizontalDivider(color = MoColors.border, modifier = Modifier.padding(horizontal = 20.dp))
 }

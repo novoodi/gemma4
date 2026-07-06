@@ -37,6 +37,9 @@ import androidx.navigation.NavController
 import com.navoodi.morimi.data.SampleData
 import com.navoodi.morimi.data.model.Message
 import com.navoodi.morimi.navigation.Screen
+import com.navoodi.morimi.ui.components.GeminiIcon
+import com.navoodi.morimi.ui.components.MoStatus
+import com.navoodi.morimi.ui.components.MoStatusBadge
 import com.navoodi.morimi.ui.theme.*
 import java.util.Calendar
 
@@ -94,6 +97,7 @@ fun ChatScreen(
     val inputText    by viewModel.inputText.collectAsStateWithLifecycle()
     val summaryState by viewModel.summaryState.collectAsStateWithLifecycle()
     val leaveState   by viewModel.leaveState.collectAsStateWithLifecycle()
+    val isCompressing by viewModel.isCompressing.collectAsStateWithLifecycle()
     val listState     = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -168,14 +172,14 @@ fun ChatScreen(
             title = { Text("초대 코드", fontWeight = FontWeight.Bold) },
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text("이 코드를 공유해 친구를 초대하세요", fontSize = 13.sp, color = Gray400)
+                    Text("이 코드를 공유해 친구를 초대하세요", fontFamily = Pretendard, fontSize = 13.sp, color = MoColors.textTertiary)
                     Spacer(Modifier.height(16.dp))
                     Text(
                         code,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace,
-                        color = Blue700,
+                        color = MoColors.brand,
                         letterSpacing = 6.sp,
                     )
                 }
@@ -185,7 +189,7 @@ fun ChatScreen(
                     clipboardManager.setText(AnnotatedString(code))
                     codeCopied = true
                 }) {
-                    Text(if (codeCopied) "복사됨 ✓" else "복사", color = if (codeCopied) Gray400 else Blue600)
+                    Text(if (codeCopied) "복사됨 ✓" else "복사", color = if (codeCopied) MoColors.textTertiary else MoColors.brand)
                 }
             },
             dismissButton = {
@@ -205,7 +209,7 @@ fun ChatScreen(
                         showLeaveDialog = false
                         viewModel.leaveRoom()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Error600),
+                    colors = ButtonDefaults.buttonColors(containerColor = MoColors.warningText),
                 ) { Text("나가기") }
             },
             dismissButton = {
@@ -216,34 +220,34 @@ fun ChatScreen(
 
     // ── Layout ───────────────────────────────────────────────────────────────
 
-    Column(modifier = Modifier.fillMaxSize().background(White).statusBarsPadding().imePadding()) {
+    Column(modifier = Modifier.fillMaxSize().background(MoColors.surfaceBase).statusBarsPadding().imePadding()) {
         // Header
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
-                .background(White)
+                .background(MoColors.surfaceBase)
                 .padding(horizontal = 8.dp),
         ) {
             IconButton(
                 onClick = { navController.popBackStack() },
                 modifier = Modifier.align(Alignment.CenterStart),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = Gray900)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = MoColors.textPrimary)
             }
             Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(room?.name ?: "", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Gray900)
-                Text("${room?.participantUids?.size ?: 0}명 참여 중", fontSize = 11.sp, color = Gray400)
+                Text(room?.name ?: "", fontFamily = Pretendard, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+                Text("${room?.participantUids?.size ?: 0}명 참여 중", fontFamily = Pretendard, fontSize = 11.sp, color = MoColors.textTertiary)
             }
             var showMenu by remember { mutableStateOf(false) }
             Row(modifier = Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically) {
                 if (room?.inviteCode?.isNotEmpty() == true) {
                     IconButton(onClick = { showCodeDialog = true; codeCopied = false }) {
-                        Icon(Icons.Outlined.Info, contentDescription = "초대 코드", tint = Gray400, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Outlined.Info, contentDescription = "초대 코드", tint = MoColors.textTertiary, modifier = Modifier.size(20.dp))
                     }
                 }
                 Box {
-                    TextButton(onClick = { showMenu = true }) { Text("메뉴", fontSize = 12.sp) }
+                    TextButton(onClick = { showMenu = true }) { Text("메뉴", fontFamily = Pretendard, fontSize = 12.sp) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         SampleData.datasets.forEachIndexed { i, ds ->
                             DropdownMenuItem(
@@ -253,7 +257,7 @@ fun ChatScreen(
                         }
                         HorizontalDivider()
                         DropdownMenuItem(
-                            text = { Text("방 나가기", color = Error600) },
+                            text = { Text("방 나가기", color = MoColors.warningText) },
                             onClick = { showMenu = false; showLeaveDialog = true },
                         )
                     }
@@ -261,14 +265,27 @@ fun ChatScreen(
             }
         }
 
-        HorizontalDivider(color = Gray100)
+        HorizontalDivider(color = MoColors.border)
+
+        // 백그라운드 성향 압축 중 — "스피너 없는" 조용한 플로팅 상태배지
+        if (isCompressing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MoColors.surfaceSubtle)
+                    .padding(vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                MoStatusBadge(status = MoStatus.Syncing, text = "성향을 정리하고 있어요")
+            }
+        }
 
         // Messages
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .weight(1f)
-                .background(Color(0xFFF8F9FC))
+                .background(MoColors.surfaceSubtle)
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -303,9 +320,9 @@ fun ChatScreen(
                                 Toast.makeText(context, "분석을 시작했어요. 끝나면 알림으로 알려드릴게요", Toast.LENGTH_LONG).show()
                             },
                             enabled = summaryState !is SummaryState.Loading,
-                            label = { Text("⚡ AI 요약 준비됨 — 추천 장소 3곳 발견", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Blue700) },
-                            colors = AssistChipDefaults.assistChipColors(containerColor = Blue50),
-                            border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = Blue100),
+                            label = { Text("✨ AI로 이야기 정리하기", fontFamily = Pretendard, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MoColors.brand) },
+                            colors = AssistChipDefaults.assistChipColors(containerColor = MoColors.brandSubtle),
+                            border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = MoBlue100),
                             shape = CircleShape,
                         )
                     }
@@ -324,7 +341,7 @@ fun ChatScreen(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Box(
-                modifier = Modifier.size(36.dp).clip(CircleShape).background(Blue600),
+                modifier = Modifier.size(36.dp).clip(CircleShape).background(MoColors.brand),
                 contentAlignment = Alignment.Center,
             ) {
                 IconButton(
@@ -334,7 +351,7 @@ fun ChatScreen(
                     },
                     enabled = summaryState !is SummaryState.Loading,
                 ) {
-                    Icon(imageVector = GeminiIcon, contentDescription = "AI 요약", tint = White, modifier = Modifier.size(18.dp))
+                    Icon(imageVector = GeminiIcon, contentDescription = "AI 요약", tint = MoColors.textOnBrand, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -342,14 +359,16 @@ fun ChatScreen(
                 value = inputText,
                 onValueChange = viewModel::onInputChange,
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("메시지 입력…", color = Gray400) },
+                placeholder = { Text("메시지 입력…", fontFamily = Pretendard, color = MoColors.textTertiary) },
+                textStyle = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                 maxLines = 3,
                 shape = RoundedCornerShape(22.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Gray100,
-                    focusedBorderColor = Blue300,
-                    unfocusedContainerColor = Gray50,
-                    focusedContainerColor = Gray50,
+                    unfocusedBorderColor = MoColors.border,
+                    focusedBorderColor = MoColors.brand,
+                    unfocusedContainerColor = MoColors.surfaceSubtle,
+                    focusedContainerColor = MoColors.surfaceSubtle,
+                    cursorColor = MoColors.brand,
                 ),
             )
 
@@ -358,14 +377,14 @@ fun ChatScreen(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .background(if (hasInput) Blue600 else Gray200),
+                    .background(if (hasInput) MoColors.brand else MoColors.borderStrong),
                 contentAlignment = Alignment.Center,
             ) {
                 IconButton(onClick = viewModel::sendMessage) {
                     Icon(
                         Icons.AutoMirrored.Filled.Send,
                         contentDescription = "전송",
-                        tint = if (hasInput) White else Gray400,
+                        tint = if (hasInput) MoColors.textOnBrand else MoColors.textTertiary,
                         modifier = Modifier.size(16.dp),
                     )
                 }
@@ -386,13 +405,14 @@ private fun DateSeparatorItem(text: String) {
     ) {
         Surface(
             shape = CircleShape,
-            color = White,
+            color = MoColors.surfaceCard,
             shadowElevation = 1.dp,
         ) {
             Text(
                 text,
+                fontFamily = Pretendard,
                 fontSize = 11.sp,
-                color = Gray500,
+                color = MoColors.textSecondary,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
             )
         }
@@ -418,10 +438,10 @@ private fun MessageBubble(
             // Avatar: shown for first message in group, spacer otherwise (keeps bubble aligned)
             if (showSenderName) {
                 Box(
-                    modifier = Modifier.size(30.dp).clip(CircleShape).background(Blue100),
+                    modifier = Modifier.size(30.dp).clip(CircleShape).background(MoColors.participantBg),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(msg.senderName.take(1), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Blue700)
+                    Text(msg.senderName.take(1), fontFamily = Pretendard, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MoColors.participant)
                 }
             } else {
                 Spacer(Modifier.size(30.dp))
@@ -431,7 +451,7 @@ private fun MessageBubble(
 
         // Time label: left of my bubble, right of others'
         if (isMe && showTime) {
-            Text(formatTime(msg.timestamp), fontSize = 10.sp, color = Gray400, modifier = Modifier.align(Alignment.Bottom))
+            Text(formatTime(msg.timestamp), fontFamily = Pretendard, fontSize = 10.sp, color = MoColors.textTertiary, modifier = Modifier.align(Alignment.Bottom))
             Spacer(Modifier.width(4.dp))
         }
 
@@ -442,9 +462,10 @@ private fun MessageBubble(
             if (!isMe && showSenderName) {
                 Text(
                     msg.senderName,
+                    fontFamily = Pretendard,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Gray500,
+                    color = MoColors.textSecondary,
                     modifier = Modifier.padding(bottom = 4.dp, start = 2.dp),
                 )
             }
@@ -454,13 +475,14 @@ private fun MessageBubble(
                     bottomStart = if (isMe) 18.dp else 4.dp,
                     bottomEnd   = if (isMe) 4.dp  else 18.dp,
                 ),
-                color = if (isMe) Blue600 else White,
+                color = if (isMe) MoColors.brand else MoColors.surfaceCard,
                 shadowElevation = if (isMe) 0.dp else 1.dp,
             ) {
                 Text(
                     text = msg.content,
+                    fontFamily = Pretendard,
                     fontSize = 14.sp,
-                    color = if (isMe) White else Gray900,
+                    color = if (isMe) MoColors.textOnBrand else MoColors.textPrimary,
                     lineHeight = 20.sp,
                     modifier = Modifier.padding(horizontal = 15.dp, vertical = 11.dp),
                 )
@@ -469,7 +491,7 @@ private fun MessageBubble(
 
         if (!isMe && showTime) {
             Spacer(Modifier.width(4.dp))
-            Text(formatTime(msg.timestamp), fontSize = 10.sp, color = Gray400, modifier = Modifier.align(Alignment.Bottom))
+            Text(formatTime(msg.timestamp), fontFamily = Pretendard, fontSize = 10.sp, color = MoColors.textTertiary, modifier = Modifier.align(Alignment.Bottom))
         }
     }
 }
@@ -498,18 +520,3 @@ private fun sameDay(t1: Long, t2: Long): Boolean {
 }
 
 private fun sameMinute(t1: Long, t2: Long) = t1 / 60_000 == t2 / 60_000
-
-private val GeminiIcon: ImageVector = ImageVector.Builder(
-    name = "Gemini",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f,
-).path(fill = SolidColor(Color.Black)) {
-    moveTo(12f, 2f)
-    curveTo(11.5f, 7.8f, 7.8f, 11.5f, 2f, 12f)
-    curveTo(7.8f, 12.5f, 11.5f, 16.2f, 12f, 22f)
-    curveTo(12.5f, 16.2f, 16.2f, 12.5f, 22f, 12f)
-    curveTo(16.2f, 11.5f, 12.5f, 7.8f, 12f, 2f)
-    close()
-}.build()

@@ -31,6 +31,7 @@ import androidx.navigation.NavController
 import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.navigation.Screen
 import com.navoodi.morimi.ui.screen.chat.AgentDebugEntry
+import com.navoodi.morimi.ui.components.GeminiIcon
 import com.navoodi.morimi.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -91,37 +92,37 @@ fun AILoadingScreen(
             Box(modifier = Modifier.size(80.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(80.dp),
-                    color = Blue600,
-                    trackColor = Blue100,
+                    color = MoColors.brand,
+                    trackColor = MoBlue100,
                     strokeWidth = 3.dp,
                 )
                 androidx.compose.material3.Icon(
                     imageVector = GeminiIcon,
                     contentDescription = null,
-                    tint = Blue600,
+                    tint = MoColors.brand,
                     modifier = Modifier.size(36.dp),
                 )
             }
             Spacer(Modifier.height(24.dp))
-            Text("AI가 분석 중입니다", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Gray900)
+            Text("AI가 분석 중입니다", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
             Spacer(Modifier.height(8.dp))
             Text(
                 text = agentProgress.ifBlank { "분석을 시작하고 있습니다..." },
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                color = if (done) Success600 else Blue600,
+                color = if (done) MoColors.place else MoColors.brand,
                 modifier = Modifier.defaultMinSize(minHeight = 22.dp),
             )
         }
 
         // 디버그 로그 패널
         if (debugLog.isNotEmpty()) {
-            HorizontalDivider(color = Gray100)
+            HorizontalDivider(color = MoColors.border)
             Text(
                 text = "AI 파이프라인 내부 로그",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Gray400,
+                color = MoColors.textTertiary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
             LazyColumn(
@@ -162,23 +163,23 @@ private fun DebugEntryCard(entry: AgentDebugEntry) {
                     text = entry.label,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Gray900,
+                    color = MoColors.textPrimary,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = if (expanded) "▲" else "▼",
                     fontSize = 10.sp,
-                    color = Gray400,
+                    color = MoColors.textTertiary,
                 )
             }
             if (expanded) {
                 Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = Gray100)
+                HorizontalDivider(color = MoColors.border)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = entry.content,
                     fontSize = 11.sp,
-                    color = Gray700,
+                    color = MoColors.textSecondary,
                     fontFamily = FontFamily.Monospace,
                     lineHeight = 16.sp,
                 )
@@ -187,15 +188,3 @@ private fun DebugEntryCard(entry: AgentDebugEntry) {
     }
 }
 
-private val GeminiIcon: ImageVector = ImageVector.Builder(
-    name = "Gemini",
-    defaultWidth = 24.dp, defaultHeight = 24.dp,
-    viewportWidth = 24f, viewportHeight = 24f,
-).path(fill = SolidColor(Color.Black)) {
-    moveTo(12f, 2f)
-    curveTo(11.5f, 7.8f, 7.8f, 11.5f, 2f, 12f)
-    curveTo(7.8f, 12.5f, 11.5f, 16.2f, 12f, 22f)
-    curveTo(12.5f, 16.2f, 16.2f, 12.5f, 22f, 12f)
-    curveTo(16.2f, 11.5f, 12.5f, 7.8f, 12f, 2f)
-    close()
-}.build()
