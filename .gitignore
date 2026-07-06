@@ -31,3 +31,9 @@ skills-lock.json
 
 # Binary/design assets
 *.zip
+
+# On-device model caches (generated at runtime, multi-GB)
+*.xnnpack_cache_*
+
+# Design handoff bundle (local reference only, large HTML/PPTX)
+/.design-import/
