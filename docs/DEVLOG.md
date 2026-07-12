@@ -165,6 +165,20 @@
 "RAG"가 최근10 문자열 덤프 → 진짜 온디바이스 시맨틱 검색으로. 프라이버시 방화벽 서사
 확장(후기 임베딩·검색까지 전부 기기 내). 골든/랭킹/통합/단위로 다층 검증.
 
+## 2026-07-12 — 후속 1: 임베딩 모델 다운로드 배선
+
+- `ModelDownloadService` 단일 파일 → **다중 파일 일반화**: Gemma(필수) + 임베딩 tflite·
+  tokenizer(선택, required=false — 실패해도 전체 성공, 키워드 폴백 존재)
+- 크기 일치 시 **skip**(재개 지원), 진행률 전역화(분모 2.79GB), 416 재귀·Range 유지
+- URL: tflite=kontextdev, tokenizer=onnx-community(비게이팅 미러, DEVLOG 상단 표와 동일)
+- UI 텍스트 "약 2.6GB" → "약 2.8GB"(3곳)
+- **실기기 검증**(`ModelDownloadServiceTest`, 계측): Gemma skip(수정시각 불변) 확인 +
+  임베딩 2종 실다운로드(tflite 179,132,472 / tokenizer 20,323,312, 정확한 크기) 통과.
+  FGS는 앱 프로세스에서 `Background started FGS: Allowed`로 정상 시작
+  (⚠️ 이 테스트는 네트워크·대용량 의존 — CI에선 Gemma 부재로 assumeTrue skip)
+- 참고: Git Bash가 `/sdcard`를 `C:/Program Files/Git/sdcard`로 오변환 → adb 파일 확인은
+  PowerShell 사용(이 세션 함정)
+
 ### 스파이크 1 최종 판정 (2026-07-12): **통과 — 방법 B 기술적 실현 가능 ✅**
 - 작업 1(런타임 공존) · 2(DJL 토크나이저) · 3(HF 게이팅) 모두 통과, 실기기 실증
 - 확보된 토대: 의존성 좌표, libc++_shared 4-ABI 동봉, DJL 토크나이저 동작,

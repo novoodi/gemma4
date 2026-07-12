@@ -81,7 +81,7 @@ fun ModelDownloadScreen(
         Text("AI 모델 준비", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "온디바이스 AI 기능을 사용하려면\nGemma 모델 (약 2.6 GB)이 필요합니다.",
+            text = "온디바이스 AI 기능을 사용하려면\nGemma·임베딩 모델 (약 2.8 GB)이 필요합니다.",
             fontSize = 14.sp,
             color = MoColors.textSecondary,
             textAlign = TextAlign.Center,
@@ -180,7 +180,7 @@ fun ModelDownloadScreen(
                     text = when (state) {
                         is ModelDownloadUiState.Downloading -> "다운로드 취소"
                         is ModelDownloadUiState.Error -> "다시 시도"
-                        else -> "AI 모델 다운로드 (약 2.6 GB)"
+                        else -> "AI 모델 다운로드 (약 2.8 GB)"
                     },
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -210,7 +210,7 @@ fun ModelDownloadScreen(
             text = {
                 Text(
                     "Wi-Fi에 연결되어 있지 않습니다.\n" +
-                    "모바일 데이터로 약 2.6 GB를 다운로드합니다.\n" +
+                    "모바일 데이터로 약 2.8 GB를 다운로드합니다.\n" +
                     "계속하시겠습니까?"
                 )
             },

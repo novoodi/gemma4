@@ -30,16 +30,42 @@ class ModelDownloadService : Service() {
     companion object {
         val state = MutableStateFlow<ModelDownloadUiState>(ModelDownloadUiState.Idle)
 
-        const val DOWNLOAD_URL =
+        // 생성용 Gemma(필수) + 임베딩 RAG용 tflite·토크나이저(선택 — 실패 시 키워드 폴백)
+        private const val GEMMA_URL =
             "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
-        const val EXPECTED_SIZE = 2_588_147_712L
+        private const val EMBED_TFLITE_URL =
+            "https://huggingface.co/kontextdev/embeddinggemma-300m-litertlm/resolve/main/embeddinggemma-300M_seq512_mixed-precision.tflite"
+        private const val TOKENIZER_URL =
+            "https://huggingface.co/onnx-community/embeddinggemma-300m-ONNX/resolve/main/tokenizer.json"
+
+        private const val GEMMA_SIZE = 2_588_147_712L
+        private const val EMBED_TFLITE_SIZE = 179_132_472L
+        private const val TOKENIZER_SIZE = 20_323_312L
+
+        /** 전체 다운로드 예상 크기(진행률 분모) */
+        const val EXPECTED_SIZE = GEMMA_SIZE + EMBED_TFLITE_SIZE + TOKENIZER_SIZE
 
         private const val CHANNEL_ID = "model_download_channel"
         private const val NOTIF_ID = 9001
+        private const val TAG = "ModelDownloadService"
 
         const val ACTION_START = "com.navoodi.morimi.ACTION_MODEL_DOWNLOAD_START"
         const val ACTION_CANCEL = "com.navoodi.morimi.ACTION_MODEL_DOWNLOAD_CANCEL"
     }
+
+    /** 다운로드 항목. required=false는 실패해도 전체를 실패시키지 않음(임베딩은 폴백 존재) */
+    private data class DownloadItem(
+        val url: String,
+        val filename: String,
+        val size: Long,
+        val required: Boolean,
+    )
+
+    private val items = listOf(
+        DownloadItem(GEMMA_URL, LlmService.MODEL_FILENAME, GEMMA_SIZE, required = true),
+        DownloadItem(EMBED_TFLITE_URL, EmbeddingGemmaEmbedder.MODEL_FILENAME, EMBED_TFLITE_SIZE, required = false),
+        DownloadItem(TOKENIZER_URL, EmbeddingGemmaEmbedder.TOKENIZER_FILENAME, TOKENIZER_SIZE, required = false),
+    )
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var downloadJob: Job? = null
@@ -80,24 +106,32 @@ class ModelDownloadService : Service() {
                     ?: throw Exception("외부 저장소를 사용할 수 없습니다")
                 modelsDir.mkdirs()
 
-                val partFile = File(modelsDir, "${LlmService.MODEL_FILENAME}.part")
-                val destFile = File(modelsDir, LlmService.MODEL_FILENAME)
+                var completedBytes = 0L   // 이미 확보한 파일들의 누적 바이트(전역 진행률용)
+                for (item in items) {
+                    val destFile = File(modelsDir, item.filename)
+                    // 이미 올바른 크기로 존재하면 건너뜀(재개·부분 다운로드 지원)
+                    if (destFile.exists() && destFile.length() == item.size) {
+                        completedBytes += item.size
+                        continue
+                    }
 
-                val totalBytes = downloadToPartFile(partFile)
-
-                // .part → 최종 파일로 이동
-                if (!partFile.renameTo(destFile)) {
+                    val partFile = File(modelsDir, "${item.filename}.part")
                     try {
-                        partFile.copyTo(destFile, overwrite = true)
-                        partFile.delete()
+                        val bytes = downloadToPartFile(item.url, partFile, completedBytes)
+                        moveToFinal(partFile, destFile)
+                        completedBytes += bytes
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
-                        destFile.delete()
-                        throw Exception("파일 이동 실패: ${e.message}")
+                        if (item.required) throw e
+                        // 선택 항목(임베딩) 실패 — 키워드 폴백으로 동작하므로 전체는 계속
+                        Log.w(TAG, "선택 항목 다운로드 실패(무시): ${item.filename} — ${e.message}")
+                        completedBytes += item.size
                     }
                 }
 
                 state.value = ModelDownloadUiState.Complete
-                updateNotification(1f, totalBytes, totalBytes, complete = true)
+                updateNotification(1f, EXPECTED_SIZE, EXPECTED_SIZE, complete = true)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             } catch (e: CancellationException) {
@@ -114,14 +148,27 @@ class ModelDownloadService : Service() {
         }
     }
 
+    private fun moveToFinal(partFile: File, destFile: File) {
+        if (!partFile.renameTo(destFile)) {
+            try {
+                partFile.copyTo(destFile, overwrite = true)
+                partFile.delete()
+            } catch (e: Exception) {
+                destFile.delete()
+                throw Exception("파일 이동 실패: ${e.message}")
+            }
+        }
+    }
+
     /**
-     * HTTP Range 이어받기를 지원하는 다운로드.
-     * partFile에 누적 저장하고 크기 검증 후 totalBytes 반환.
+     * HTTP Range 이어받기를 지원하는 단일 파일 다운로드.
+     * [baseBytes]는 앞선 파일들의 누적 바이트로, 전역 진행률(분모 [EXPECTED_SIZE]) 계산에 쓰인다.
+     * partFile에 누적 저장하고 크기 검증 후 이 파일의 totalBytes 반환.
      */
-    private suspend fun downloadToPartFile(partFile: File): Long {
+    private suspend fun downloadToPartFile(url: String, partFile: File, baseBytes: Long): Long {
         val existingSize = if (partFile.exists()) partFile.length() else 0L
 
-        val connection = (URL(DOWNLOAD_URL).openConnection() as HttpURLConnection).apply {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 30_000
             readTimeout = 60_000
             setRequestProperty("User-Agent", "MorimiApp/1.0")
@@ -151,10 +198,10 @@ class ModelDownloadService : Service() {
                 // .part 크기가 서버 파일과 같거나 초과 → Range 요청 불가.
                 // 스테일 .part를 삭제하고 Range 없이 전체 재다운로드로 자가복구.
                 // 삭제 후 existingSize=0 경로로 재진입하므로 다음 요청은 200이 되어 재귀는 1회로 종료된다.
-                Log.w("ModelDownloadService", "HTTP 416 — 스테일 .part 삭제 후 전체 재다운로드")
+                Log.w(TAG, "HTTP 416 — 스테일 .part 삭제 후 전체 재다운로드")
                 connection.disconnect()
                 partFile.delete()
-                return downloadToPartFile(partFile)
+                return downloadToPartFile(url, partFile, baseBytes)
             }
             else -> {
                 connection.disconnect()
@@ -175,14 +222,16 @@ class ModelDownloadService : Service() {
                 output.write(buffer, 0, bytesRead)
                 downloadedBytes += bytesRead
 
-                val progress = downloadedBytes.toFloat() / totalBytes.toFloat()
-                state.value = ModelDownloadUiState.Downloading(progress, downloadedBytes, totalBytes)
+                // 전역 진행률(분모 = 전체 예상 크기). 여러 파일에 걸쳐 단조 증가
+                val globalBytes = baseBytes + downloadedBytes
+                val progress = (globalBytes.toFloat() / EXPECTED_SIZE.toFloat()).coerceAtMost(1f)
+                state.value = ModelDownloadUiState.Downloading(progress, globalBytes, EXPECTED_SIZE)
 
                 // 알림은 1% 단위로만 업데이트 (과도한 IPC 방지)
                 val pct = (progress * 100).toInt()
                 if (pct != lastNotifPct) {
                     lastNotifPct = pct
-                    updateNotification(progress, downloadedBytes, totalBytes)
+                    updateNotification(progress, globalBytes, EXPECTED_SIZE)
                 }
             }
         } finally {
