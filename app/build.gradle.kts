@@ -52,6 +52,12 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests {
+            // android.util.Log 등 스텁 호출이 예외 대신 기본값을 반환하도록 (JVM 단위 테스트)
+            isReturnDefaultValues = true
+        }
+    }
     packaging {
         resources {
             excludes += setOf(
@@ -110,6 +116,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    // JVM 단위 테스트에서 org.json.JSONObject 실제 구현 사용 (android.jar 스텁은 예외 발생)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

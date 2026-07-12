@@ -56,6 +56,10 @@ class ChatViewModel(
     companion object {
         private const val TAG = "ChatViewModel"
         private const val COMPRESSION_TRIGGER_COUNT = 10
+
+        // 증분 압축 델타 창 — 트리거마다 넘길 최근 메시지 수. 트리거 간격(10)보다 약간 크게 잡아
+        // 스냅샷 지연으로 인한 누락을 겹침으로 방어(병합이 중복을 제거하므로 겹침은 무해).
+        private const val COMPRESSION_WINDOW_SIZE = 15
     }
 
     // 현재 로그인 uid — UI에서 isMe 판단에 사용
@@ -99,7 +103,8 @@ class ChatViewModel(
         viewModelScope.launch {
             ChatRepository.sendMessage(roomId, text, senderName)
             if ((preCount + 1) % COMPRESSION_TRIGGER_COUNT == 0) {
-                triggerStatusCompression(messages.value)
+                // 누적 전체가 아닌 최근 델타만 압축에 넘긴다(컨텍스트 초과 방지) — 파이프라인이 직전 상태와 병합
+                triggerStatusCompression(messages.value.takeLast(COMPRESSION_WINDOW_SIZE))
             }
         }
     }

@@ -76,6 +76,9 @@ class AgentOrchestrator(
     companion object {
         private const val TAG = "AgentOrchestrator"
         private const val MAX_ATTEMPTS = 3
+        // 단일 시도 내 Function Calling 왕복 상한 — 모델이 계속 도구만 호출하며
+        // 최종 응답을 내지 않는 상황에서 무한 루프를 방지(바깥 MAX_ATTEMPTS와 별개).
+        private const val MAX_TOOL_ROUNDS = 8
         private const val MODEL_NAME = "gemini-3.5-flash"
     }
 
@@ -299,7 +302,12 @@ class AgentOrchestrator(
         var meetingDate = "미정"
         val collectedKakaoPlaces = mutableListOf<KakaoPlace>()
 
+        var toolRounds = 0
         while (true) {
+            if (toolRounds++ >= MAX_TOOL_ROUNDS) {
+                Log.w(TAG, "Function Calling 왕복 상한($MAX_TOOL_ROUNDS) 도달 — 루프 강제 종료")
+                break
+            }
             @Suppress("UNCHECKED_CAST")
             val fcList: List<FunctionCall> =
                 (response.functionCalls() as? List<FunctionCall>) ?: emptyList()
