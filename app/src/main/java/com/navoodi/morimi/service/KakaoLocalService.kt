@@ -71,10 +71,18 @@ object KakaoLocalService {
         }
     }
 
-    suspend fun placeExists(name: String): Boolean = withContext(Dispatchers.IO) {
+    /**
+     * 장소 실존 여부를 3-상태로 반환한다.
+     * 정상 응답이면 OPEN(검색됨)/CLOSED(미검색), 키 미설정·HTTP 오류·예외는 UNKNOWN(검증 불가).
+     *
+     * 과거에는 검증 불가 상황에서 true(OPEN)를 반환하는 fail-open이었으나,
+     * 이는 "검증하지 못한 것"을 "검증됨"으로 위장해 Guardrail 신뢰성을 훼손했다.
+     * 이제 검증 불가를 UNKNOWN으로 정직하게 노출한다.
+     */
+    suspend fun checkPlace(name: String): PlaceStatus = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) {
-            Log.w(TAG, "KAKAO_REST_API_KEY 미설정 — 보수적으로 true 반환")
-            return@withContext true
+            Log.w(TAG, "KAKAO_REST_API_KEY 미설정 — 검증 불가(UNKNOWN)")
+            return@withContext PlaceStatus.UNKNOWN
         }
         try {
             val url = "$ENDPOINT?query=${URLEncoder.encode(name, "UTF-8")}&size=1"
@@ -83,14 +91,18 @@ object KakaoLocalService {
                 readTimeout = 10_000
                 setRequestProperty("Authorization", "KakaoAK ${apiKey.trim()}")
             }
-            if (conn.responseCode != 200) return@withContext true
+            if (conn.responseCode != 200) {
+                Log.w(TAG, "checkPlace HTTP ${conn.responseCode} name=$name — 검증 불가(UNKNOWN)")
+                return@withContext PlaceStatus.UNKNOWN
+            }
             val text = conn.inputStream.bufferedReader().readText()
-            JSONObject(text).getJSONObject("meta").optInt("total_count", 0) > 0
+            val count = JSONObject(text).getJSONObject("meta").optInt("total_count", 0)
+            if (count > 0) PlaceStatus.OPEN else PlaceStatus.CLOSED
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "placeExists 오류 name=$name", e)
-            true
+            Log.e(TAG, "checkPlace 오류 name=$name — 검증 불가(UNKNOWN)", e)
+            PlaceStatus.UNKNOWN
         }
     }
 }

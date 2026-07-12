@@ -39,6 +39,7 @@ import com.navoodi.morimi.MoimApp
 import com.navoodi.morimi.data.model.CalendarEvent
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.RecommendedPlace
+import com.navoodi.morimi.data.model.VerificationStatus
 import com.navoodi.morimi.data.repository.CalendarRepository
 import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.navigation.Screen
@@ -363,6 +364,7 @@ private fun PlaceCard(
                 .padding(16.dp),
         ) {
             Text(place.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+            VerificationBadge(place.verification)
             if (place.address.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 Text(place.address, fontSize = 13.sp, color = MoColors.textSecondary)
@@ -410,6 +412,28 @@ private fun PlaceCard(
             )
         }
     }
+}
+
+// ── 장소 검증 상태 배지 ───────────────────────────────────────────────────────
+// "검증됨"과 "검증 불가"(장소 API 실패·키 미설정)를 구분해 정직하게 노출한다.
+@Composable
+private fun VerificationBadge(status: VerificationStatus) {
+    val (label, color) = when (status) {
+        VerificationStatus.VERIFIED   -> "✓ 영업 확인" to MoColors.place
+        VerificationStatus.NOT_FOUND  -> "미확인 장소" to MoColors.warn
+        VerificationStatus.UNVERIFIED -> "검증 불가" to MoColors.textTertiary
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(
+        text = label,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = color,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 // ── Card: 리스트 (활동 / 챙겨갈 것) ───────────────────────────────────────────

@@ -42,20 +42,22 @@ class GuardrailService {
         val verified = coroutineScope {
             candidates.map { name ->
                 async {
-                    val exists = KakaoLocalService.placeExists(name)
-                    PlaceVerification(name = name, status = if (exists) PlaceStatus.OPEN else PlaceStatus.CLOSED)
+                    PlaceVerification(name = name, status = KakaoLocalService.checkPlace(name))
                 }
             }.awaitAll()
         }
 
+        // CLOSED(실존하지 않음)만 재시도 대상. UNKNOWN(검증 불가)은 재시도해도
+        // 해결되지 않으므로 통과시키되, 상태를 보존해 UI가 "검증 불가"로 정직하게 표기한다.
         val closed = verified.filter { it.status == PlaceStatus.CLOSED }
+        val unknown = verified.filter { it.status == PlaceStatus.UNKNOWN }
         val passed = closed.isEmpty()
         val feedback = if (!passed) {
             "다음 장소는 현재 영업하지 않거나 존재하지 않습니다: ${closed.joinToString(", ") { it.name }}. " +
             "해당 장소들을 반드시 제외하고, 실제 영업 중인 다른 장소로만 재추천하세요."
         } else ""
 
-        Log.d(TAG, "검증 완료 — passed=$passed closed=${closed.size}건")
+        Log.d(TAG, "검증 완료 — passed=$passed closed=${closed.size}건 unknown=${unknown.size}건")
         return GuardrailResult(passed = passed, verifiedPlaces = verified, feedbackForRetry = feedback)
     }
 }

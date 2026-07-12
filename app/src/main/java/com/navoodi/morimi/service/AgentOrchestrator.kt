@@ -6,6 +6,7 @@ import com.navoodi.morimi.data.local.UserStatusEntity
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
 import com.navoodi.morimi.data.model.RecommendedPlace
+import com.navoodi.morimi.data.model.VerificationStatus
 import com.navoodi.morimi.data.pipeline.OnDeviceLlmPort
 import com.navoodi.morimi.data.repository.FeedbackRepository
 import com.google.genai.Client
@@ -38,7 +39,12 @@ sealed class AgentEvent {
     data class PromptGenerated(val attempt: Int, val prompt: String) : AgentEvent()
     data class ToolCalled(val name: String, val args: Map<String, Any?>, val result: String) : AgentEvent()
     data class JsonParsed(val rawJson: String) : AgentEvent()
-    data class GuardrailEvaluated(val attempt: Int, val passed: Boolean, val feedback: String) : AgentEvent()
+    data class GuardrailEvaluated(
+        val attempt: Int,
+        val passed: Boolean,
+        val feedback: String,
+        val unknownCount: Int = 0,
+    ) : AgentEvent()
     data class OrchestrationFinished(val success: Boolean, val attempts: Int, val reason: String? = null) : AgentEvent()
 }
 
@@ -212,15 +218,17 @@ class AgentOrchestrator(
                     placeNames = callResult.summary.places.map { it.name },
                     city = callResult.city
                 )
-                Log.d(TAG, "시도 $attempt Guardrail: passed=${guardrail.passed}")
+                val unknownCount = guardrail.verifiedPlaces.count { it.status == PlaceStatus.UNKNOWN }
+                Log.d(TAG, "시도 $attempt Guardrail: passed=${guardrail.passed} unknown=$unknownCount")
                 eventTracker?.onEvent(
-                    AgentEvent.GuardrailEvaluated(attempt, guardrail.passed, guardrail.feedbackForRetry)
+                    AgentEvent.GuardrailEvaluated(attempt, guardrail.passed, guardrail.feedbackForRetry, unknownCount)
                 )
 
                 if (guardrail.passed) {
                     Log.d(TAG, "Guardrail 통과 ✓ — 총 $attempt 회")
                     eventTracker?.onEvent(AgentEvent.OrchestrationFinished(true, attempt))
-                    return@withContext OrchestratorResult.Success(callResult.summary, attempt)
+                    val enriched = applyVerification(callResult.summary, guardrail.verifiedPlaces)
+                    return@withContext OrchestratorResult.Success(enriched, attempt)
                 }
 
                 accumulatedFeedback = if (accumulatedFeedback.isBlank()) guardrail.feedbackForRetry
@@ -450,6 +458,28 @@ class AgentOrchestrator(
         val dashIdx = s.indexOfFirst { it == '—' || it == '–' }
         val reason = if (dashIdx >= 0) s.substring(dashIdx + 1).trim() else ""
         return (name.ifBlank { s.trim() }) to reason
+    }
+
+    /**
+     * Guardrail 검증 결과(PlaceVerification 상태)를 요약 결과의 장소 목록에 병합한다.
+     * 검증 후보에서 제외된 장소(길이 필터 등)는 기본값 UNVERIFIED로 남는다.
+     */
+    private fun applyVerification(
+        summary: MeetingSummary,
+        verified: List<PlaceVerification>,
+    ): MeetingSummary {
+        if (summary.places.isEmpty()) return summary
+        val statusByName = verified.associate { it.name to it.status }
+        val updatedPlaces = summary.places.map { place ->
+            val status = statusByName[place.name] ?: return@map place
+            val v = when (status) {
+                PlaceStatus.OPEN -> VerificationStatus.VERIFIED
+                PlaceStatus.CLOSED -> VerificationStatus.NOT_FOUND
+                PlaceStatus.UNKNOWN -> VerificationStatus.UNVERIFIED
+            }
+            place.copy(verification = v)
+        }
+        return summary.copy(places = updatedPlaces)
     }
 
     private fun findKakaoMatch(name: String, candidates: List<KakaoPlace>): KakaoPlace? {
