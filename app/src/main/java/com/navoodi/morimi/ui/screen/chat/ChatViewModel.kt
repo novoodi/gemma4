@@ -7,7 +7,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.navoodi.morimi.MoimApp
-import com.navoodi.morimi.data.SampleData
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
@@ -183,7 +182,10 @@ class ChatViewModel(
                                 AgentDebugEntry(
                                     if (event.passed) "✅" else "❌",
                                     "Guardrail 검증 (시도 ${event.attempt})",
-                                    if (event.passed) "통과 — 검증 완료" else "실패\n${event.feedback}"
+                                    buildString {
+                                        append(if (event.passed) "통과 — 검증 완료" else "실패\n${event.feedback}")
+                                        if (event.unknownCount > 0) append("\n⚠ 검증 불가 ${event.unknownCount}건 (장소 API 응답 없음)")
+                                    }
                                 )
                             else -> null
                         }
@@ -243,41 +245,4 @@ class ChatViewModel(
     }
 
     fun resetLeaveError() { _leaveState.value = LeaveState.Idle }
-
-    // 테스트용 샘플 데이터를 Firestore에 기록하고 압축 파이프라인도 즉시 구동
-    fun loadSampleData(index: Int) {
-        val dataset = SampleData.datasets[index]
-        val uid = ChatRepository.currentUid ?: ""
-        val firstParticipantName = dataset.participants.firstOrNull()?.name ?: ""
-
-        // 로컬 Message 목록으로 압축 파이프라인 즉시 실행
-        val localMsgs = dataset.messages.mapIndexed { i, (senderName, content) ->
-            val senderId = if (senderName == firstParticipantName) uid
-                           else dataset.participants.find { it.name == senderName }?.id ?: senderName
-            Message(
-                roomId = roomId,
-                senderId = senderId,
-                senderName = senderName,
-                content = content,
-                timestamp = System.currentTimeMillis() + i
-            )
-        }
-        if (localMsgs.isNotEmpty()) triggerStatusCompression(localMsgs)
-
-        // Firestore에 비동기 기록 (타임스탬프를 순서대로 부여해 정렬 유지)
-        viewModelScope.launch(Dispatchers.IO) {
-            val base = System.currentTimeMillis()
-            dataset.messages.forEachIndexed { i, (senderName, content) ->
-                val senderId = if (senderName == firstParticipantName) uid
-                               else dataset.participants.find { it.name == senderName }?.id ?: senderName
-                ChatRepository.sendMessageRaw(
-                    roomId = roomId,
-                    content = content,
-                    senderId = senderId,
-                    senderName = senderName,
-                    timestamp = base + i
-                )
-            }
-        }
-    }
 }

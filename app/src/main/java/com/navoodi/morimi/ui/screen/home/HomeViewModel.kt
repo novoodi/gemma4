@@ -2,7 +2,6 @@ package com.navoodi.morimi.ui.screen.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.navoodi.morimi.data.SampleData
 import com.navoodi.morimi.data.model.CalendarEvent
 import com.navoodi.morimi.data.model.ChatRoom
 import com.navoodi.morimi.data.repository.CalendarRepository
@@ -55,8 +54,7 @@ class HomeViewModel : ViewModel() {
             val room = roomId?.let { roomMap[it] }
             val uids = room?.participantUids ?: emptyList()
             val initials = uids.take(4).map { uid ->
-                SampleData.participantById[uid]?.name?.first()?.toString()
-                    ?: uid.last().uppercaseChar().toString()
+                uid.last().uppercaseChar().toString()
             }
             return HomeScheduleItem(
                 id = id,

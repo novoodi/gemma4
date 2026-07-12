@@ -283,44 +283,6 @@ object ChatRepository {
         }
     }
 
-    // ── 샘플 데이터 로딩용: senderId 직접 지정 ──────────────────────────────
-
-    suspend fun sendMessageRaw(
-        roomId: String,
-        content: String,
-        senderId: String,
-        senderName: String,
-        timestamp: Long = System.currentTimeMillis()
-    ) {
-        try {
-            val uid = currentUid
-            // 실 메시지가 서버 Timestamp를 쓰므로 필드 타입을 통일한다(orderBy 정상 동작).
-            val ts = Timestamp(java.util.Date(timestamp))
-            val msgRef = db.collection("rooms").document(roomId)
-                .collection("messages").document()
-            val roomRef = db.collection("rooms").document(roomId)
-            val batch = db.batch()
-            batch.set(msgRef, hashMapOf(
-                "senderId" to senderId,
-                "senderName" to senderName,
-                "content" to content,
-                "timestamp" to ts,
-            ))
-            batch.update(roomRef, mapOf(
-                "lastMessage" to content,
-                "lastMessageTime" to ts,
-            ))
-            if (uid != null) {
-                val myReadRef = db.collection("users").document(uid)
-                    .collection("roomReads").document(roomId)
-                batch.set(myReadRef, hashMapOf("lastReadTime" to ts))
-            }
-            batch.commit().await()
-        } catch (e: Exception) {
-            Log.e(TAG, "sendMessageRaw 실패 roomId=$roomId", e)
-        }
-    }
-
     // ── 단건 조회 (AIReport / Summary용) ────────────────────────────────────
 
     suspend fun getRoomById(roomId: String): ChatRoom? {

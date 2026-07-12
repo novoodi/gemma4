@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.navoodi.morimi.data.SampleData
 import com.navoodi.morimi.data.model.Message
 import com.navoodi.morimi.navigation.Screen
 import com.navoodi.morimi.ui.components.GeminiIcon
@@ -249,13 +248,6 @@ fun ChatScreen(
                 Box {
                     TextButton(onClick = { showMenu = true }) { Text("메뉴", fontFamily = Pretendard, fontSize = 12.sp) }
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                        SampleData.datasets.forEachIndexed { i, ds ->
-                            DropdownMenuItem(
-                                text = { Text(ds.name) },
-                                onClick = { viewModel.loadSampleData(i); showMenu = false },
-                            )
-                        }
-                        HorizontalDivider()
                         DropdownMenuItem(
                             text = { Text("방 나가기", color = MoColors.warningText) },
                             onClick = { showMenu = false; showLeaveDialog = true },
