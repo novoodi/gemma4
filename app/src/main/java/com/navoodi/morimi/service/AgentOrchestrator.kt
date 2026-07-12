@@ -212,7 +212,8 @@ class AgentOrchestrator(
             AgentEvent.GemmaSummaryCompleted(safeSummary, scrub.redactions, scrub.byCategory)
         )
 
-        val ragContext = feedbackRepository.buildRagContext()
+        // 피드백은 사용자가 쓴 자유 텍스트 — 실명이 섞일 수 있으므로 경계 통과 전 동일 게이트 적용
+        val ragContext = PiiScrubber.scrub(feedbackRepository.buildRagContext(), knownNames).text
         val basePrompt = buildSystemPrompt(safeSummary, chatDate, userStatus, ragContext)
 
         var attempt = 0

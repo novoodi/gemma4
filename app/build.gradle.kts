@@ -17,6 +17,8 @@ val localProperties = Properties().apply {
 android {
     namespace = "com.navoodi.morimi"
     compileSdk = 36
+    // NDK r28+ 는 16KB 페이지 정렬을 기본 지원. libc++_shared.so 복사 태스크의 소스이기도 함.
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.navoodi.morimi"
@@ -64,11 +66,43 @@ android {
                 "META-INF/INDEX.LIST",
                 "META-INF/DEPENDENCIES",
                 "META-INF/LICENSE.md",
-                "META-INF/NOTICE.md"
+                "META-INF/NOTICE.md",
+                // DJL tokenizers jar의 데스크톱 네이티브(dll/dylib/linux so) — 안드로이드에선
+                // ai.djl.android:tokenizer-native AAR의 libdjl_tokenizer.so를 쓰므로 죽은 무게(~30MB)
+                "native/lib/**"
             )
         }
     }
+    // DJL tokenizer-native AAR은 libc++_shared.so를 동봉하지 않아 런타임 UnsatisfiedLinkError 발생.
+    // NDK sysroot에서 복사해 주입한다(30MB 바이너리를 git에 넣지 않기 위해 생성 디렉토리 사용).
+    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("generated/libcxx-jniLibs"))
 }
+
+// libc++_shared.so를 NDK에서 ABI별로 복사 (DEVLOG 2026-07-12 / DJL 16KB·STL 이슈 참조)
+val copyLibcxxShared by tasks.registering {
+    val ndkDir = android.ndkDirectory
+    val outDir = layout.buildDirectory.dir("generated/libcxx-jniLibs")
+    outputs.dir(outDir)
+    doLast {
+        val prebuilt = ndkDir.resolve("toolchains/llvm/prebuilt").listFiles()
+            ?.firstOrNull { it.isDirectory }
+            ?: error("NDK prebuilt 디렉토리를 찾을 수 없음: $ndkDir (ndkVersion 설치 확인)")
+        val libBase = prebuilt.resolve("sysroot/usr/lib")
+        val abiToTriple = mapOf(
+            "arm64-v8a" to "aarch64-linux-android",
+            "armeabi-v7a" to "arm-linux-androideabi",
+            "x86_64" to "x86_64-linux-android",
+            "x86" to "i686-linux-android",
+        )
+        abiToTriple.forEach { (abi, triple) ->
+            val src = libBase.resolve("$triple/libc++_shared.so")
+            require(src.exists()) { "libc++_shared.so 없음: $src" }
+            val dst = outDir.get().dir(abi).asFile.apply { mkdirs() }
+            src.copyTo(dst.resolve("libc++_shared.so"), overwrite = true)
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(copyLibcxxShared) }
 
 // ─── 의존성 충돌 해소 ───────────────────────────────────────────────────────
 // 1) protobuf: google-genai → protobuf-java(full), firebase → protobuf-javalite
@@ -111,6 +145,11 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.litertlm.android)
+    // [스파이크 1] EmbeddingGemma 임베딩 경로 — raw LiteRT + DJL 토크나이저 (DEVLOG 2026-07-12 참조)
+    implementation(libs.litert)
+    implementation(libs.litert.support)
+    implementation(libs.djl.tokenizers)
+    implementation(libs.djl.tokenizer.native.android)
     implementation(libs.google.genai)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
