@@ -1,2 +1,7 @@
 node_modules/
 *.local
+
+# Firebase CLI debug logs (may capture tokens in future)
+firebase-debug.log
+firebase-debug.*.log
+*-debug.log
