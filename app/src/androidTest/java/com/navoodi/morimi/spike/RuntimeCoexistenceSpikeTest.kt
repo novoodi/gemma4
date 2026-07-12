@@ -61,9 +61,15 @@ class RuntimeCoexistenceSpikeTest {
         assumeTrue("embeddinggemma .tflite 미푸시", tflite.exists())
 
         val interpreter = Interpreter(tflite, Interpreter.Options())
-        val inShape = interpreter.getInputTensor(0).shape().toList()
+        for (i in 0 until interpreter.inputTensorCount) {
+            val t = interpreter.getInputTensor(i)
+            Log.i(TAG, "입력[$i] name=${t.name()} dtype=${t.dataType()} shape=${t.shape().toList()}")
+        }
+        for (i in 0 until interpreter.outputTensorCount) {
+            val t = interpreter.getOutputTensor(i)
+            Log.i(TAG, "출력[$i] name=${t.name()} dtype=${t.dataType()} shape=${t.shape().toList()}")
+        }
         val outShape = interpreter.getOutputTensor(0).shape().toList()
-        Log.i(TAG, "litert Interpreter 로드 완료 — 입력텐서 ${interpreter.inputTensorCount}개 shape=$inShape / 출력텐서 ${interpreter.outputTensorCount}개 shape=$outShape")
         interpreter.close()
 
         assertTrue("출력 텐서 없음", outShape.isNotEmpty())

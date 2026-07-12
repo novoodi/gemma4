@@ -113,6 +113,58 @@
    빠뜨려도 빌드·실행 멀쩡, 검색 품질만 조용히 저하
 2. **골든 테스트**: Python sentence-transformers 기준 벡터와 코사인 ≥ 0.99 검증 없이는 미완료
 
+## 2026-07-12 — 2단계 구현 (1~3 + 골든 실측): EmbeddingGemma RAG
+
+**구현(1~3 완료, 빌드 통과)**
+- ① `EmbeddingGemmaEmbedder`(litert+DJL): 입력 INT32[1,512]/출력 FLOAT32[1,768] 실측 기준.
+  프리픽스 비대칭을 API로 강제(`embedDocuments`/`embedQuery`만 노출). 로드→사용→해제, Mutex 보호
+- ② `FeedbackRetriever` 포트 + `EmbeddingGemmaRetriever`(코사인 top-k) +
+  `KeywordFallbackRetriever`(Jaccard, 모델 미다운로드 시) + `VectorMath.cosine`
+- ③ Room 저장 경로: `FeedbackEntity`(embedding: FloatArray?)/`FeedbackDao`/
+  Converters(FloatArray↔ByteArray, LE float32)/DB v1→v2(파괴적 마이그레이션).
+  `FeedbackRepository` Room화 — append 시 임베딩 인덱싱(문서 프리픽스)
+
+**골든 테스트 실측 (androidTest, 실기기)**
+- 기준: Python sentence-transformers 5.6 + `unsloth/embeddinggemma-300m`(비게이팅 미러,
+  원본 float). 공식 google 모델은 gated → 미러 사용. torch 2.6+ 필요(gemma3 마스킹)
+- **프리픽스 일치 확인**: 미러 prompts가 우리 하드코딩과 정확히 동일
+  (document `title: none | text: `, query `task: search result | query: `)
+- 안드로이드(mixed-precision tflite) vs 기준(float) 코사인:
+  **평균 0.9569 / 최소 0.9466 / 최대 0.9625** (문서4+쿼리2)
+- 의미 순위 정확: 원본 모델에서 "조용한 카페 추천" → 홍대카페 0.49 > 브런치 0.46 >
+  술집 0.32 > 피크닉 0.20
+- 0.99 미달 = 양자화 오차 + 두 미러(kontextdev tflite ↔ unsloth float) 차이 합산
+- **임계값 0.93 확정**(사용자, 2026-07-12) → `EmbeddingGoldenTest` 하한 0.93f, CLAUDE.md 기록
+- **랭킹 일치 테스트 추가**: 후기 8문장 + 쿼리 5개, 쿼리별 Python top-1 == 온디바이스 top-1.
+  **5/5 전부 일치** (마진 0.084~0.264). 골든 코사인 재측정(n=13): 평균 0.9608 / 최소 0.9507
+
+**아티팩트 출처 (3종 — 전부 비게이팅 미러, 공식 google repo는 gated)**
+| 용도 | 파일 | 저장소 |
+|---|---|---|
+| 온디바이스 추론 | `embeddinggemma-300M_seq512_mixed-precision.tflite` (int4 혼합정밀) | `kontextdev/embeddinggemma-300m-litertlm` |
+| 온디바이스 토크나이즈 | `tokenizer.json` (BPE, vocab 262,144) | `onnx-community/embeddinggemma-300m-ONNX` |
+| 골든 기준(Python) | `model.safetensors` (원본 float) | `unsloth/embeddinggemma-300m` |
+
+⚠️ 세 미러가 서로 다른 재업로더 → 골든 코사인 0.95는 양자화 + 미러 간 차이 합산.
+정식 배포 시 공식 `google/embeddinggemma-300m`(gated, 토큰) 경로로 통일 권장.
+
+**2단계-5·6 완료 (AgentOrchestrator 시맨틱 교체)**
+- `AgentOrchestrator`: `feedbackRepository.buildRagContext()`(최근 덤프) →
+  `feedbackRetriever.retrieve(query=safeSummary, roomId, topK=3)`(시맨틱). 회수 결과도
+  PiiScrubber 경계 게이트 통과. `FeedbackRepository.buildRagContext` 제거
+- `MoimApp`: `feedbackRetriever` 런타임 교체(임베딩 모델 有→EmbeddingGemma, 無→키워드),
+  `reinitializePipelines`에 포함
+- 단위 테스트 8건(`RetrieverUnitTest`): VectorMath.cosine, KeywordFallbackRetriever
+  tokenize/jaccard/roomId필터/top-k/폴백. **총 JVM 단위 30건 통과**
+- 통합 계측 1건(`FeedbackRetrieverIntegrationTest`, 실기기, in-memory Room):
+  임베딩 저장→시맨틱 top-1 회수+roomId 필터 실증 통과
+- 남은 후속(범위 밖): ModelDownloadService가 embedding 모델(.tflite)+tokenizer.json도
+  다운로드하도록 확장(현재 스파이크는 adb push). 16KB 정렬(DJL) Play 배포 전 대체 토크나이저
+
+### 2단계 최종: **EmbeddingGemma 온디바이스 RAG 구현 완료 ✅**
+"RAG"가 최근10 문자열 덤프 → 진짜 온디바이스 시맨틱 검색으로. 프라이버시 방화벽 서사
+확장(후기 임베딩·검색까지 전부 기기 내). 골든/랭킹/통합/단위로 다층 검증.
+
 ### 스파이크 1 최종 판정 (2026-07-12): **통과 — 방법 B 기술적 실현 가능 ✅**
 - 작업 1(런타임 공존) · 2(DJL 토크나이저) · 3(HF 게이팅) 모두 통과, 실기기 실증
 - 확보된 토대: 의존성 좌표, libc++_shared 4-ABI 동봉, DJL 토크나이저 동작,

@@ -5,7 +5,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import com.navoodi.morimi.data.local.AppDatabase
+import com.navoodi.morimi.data.pipeline.EmbeddingGemmaRetriever
+import com.navoodi.morimi.data.pipeline.FeedbackRetriever
 import com.navoodi.morimi.data.pipeline.GemmaOnDeviceLlm
+import com.navoodi.morimi.data.pipeline.KeywordFallbackRetriever
 import com.navoodi.morimi.data.pipeline.MockOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
 import com.navoodi.morimi.data.repository.FeedbackRepository
@@ -41,6 +44,17 @@ class MoimApp : Application() {
                 .also { _compressionPipeline = it }
         }
 
+    // 후기 검색 리트리버 — 임베딩 모델이 있으면 시맨틱, 없으면 키워드 폴백 (런타임 교체)
+    private var _feedbackRetriever: FeedbackRetriever? = null
+    val feedbackRetriever: FeedbackRetriever
+        get() = _feedbackRetriever ?: run {
+            val embedder = feedbackRepository.embeddingEmbedder
+            val dao = feedbackRepository.feedbackDao
+            val retriever = if (embedder.isAvailable) EmbeddingGemmaRetriever(embedder, dao)
+                else KeywordFallbackRetriever(dao)
+            retriever.also { _feedbackRetriever = it }
+        }
+
     // Phase 3: 오케스트레이터 + Guardrail 하네스
     val guardrailService: GuardrailService by lazy { GuardrailService() }
     private var _agentOrchestrator: AgentOrchestrator? = null
@@ -49,14 +63,15 @@ class MoimApp : Application() {
             val llmPort = if (llmService.isModelAvailable) GemmaOnDeviceLlm(llmService) else MockOnDeviceLlm()
             AgentOrchestrator(
                 guardrailService = guardrailService,
-                feedbackRepository = feedbackRepository,
+                feedbackRetriever = feedbackRetriever,
                 onDeviceLlm = llmPort,
             ).also { _agentOrchestrator = it }
         }
 
-    /** 모델 다운로드 완료 후 호출 — 다음 접근 시 GemmaOnDeviceLlm으로 재생성됨 */
+    /** 모델 다운로드 완료 후 호출 — 다음 접근 시 온디바이스 구현으로 재생성됨 */
     fun reinitializePipelines() {
         _compressionPipeline = null
         _agentOrchestrator = null
+        _feedbackRetriever = null
     }
 }

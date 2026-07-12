@@ -2,9 +2,12 @@ package com.navoodi.morimi.data.repository
 
 import android.content.Context
 import android.util.Log
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.File
+import com.navoodi.morimi.data.local.AppDatabase
+import com.navoodi.morimi.data.local.FeedbackDao
+import com.navoodi.morimi.data.local.FeedbackEntity
+import com.navoodi.morimi.service.EmbeddingGemmaEmbedder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 data class FeedbackEntry(
@@ -13,60 +16,42 @@ data class FeedbackEntry(
     val roomId: String = ""
 )
 
+/**
+ * 모임 후기 저장소 — Room 영속(구 JSON 파일에서 이전).
+ * 저장 시 임베딩 모델이 있으면 EmbeddingGemma 벡터를 함께 인덱싱(문서 프리픽스) →
+ * [com.navoodi.morimi.data.pipeline.EmbeddingGemmaRetriever]가 시맨틱 검색에 사용.
+ */
 class FeedbackRepository(context: Context) {
 
-    private val file = File(context.filesDir, "feedback_history.json")
+    private val dao: FeedbackDao = AppDatabase.getInstance(context).feedbackDao()
+    private val embedder = EmbeddingGemmaEmbedder(context)
 
-    fun append(feedback: String, roomId: String = "") {
-        val entries = loadAll().toMutableList()
-        entries.add(FeedbackEntry(
-            date = LocalDate.now().toString(),
-            feedback = feedback,
-            roomId = roomId
-        ))
-        save(entries)
-        Log.d("FeedbackRepository", "피드백 저장: [$roomId] $feedback")
+    val feedbackDao: FeedbackDao get() = dao
+    val embeddingEmbedder: EmbeddingGemmaEmbedder get() = embedder
+
+    /** 후기 저장. 임베딩 모델이 준비돼 있으면 벡터를 함께 계산·영속화(로드→사용→해제). */
+    suspend fun append(feedback: String, roomId: String = "") = withContext(Dispatchers.IO) {
+        if (feedback.isBlank()) return@withContext
+        val embedding = if (embedder.isAvailable) {
+            runCatching { embedder.embedDocuments(listOf(feedback)).first() }
+                .onFailure { Log.e("FeedbackRepository", "임베딩 실패 — 텍스트만 저장", it) }
+                .getOrNull()
+        } else null
+
+        dao.insert(
+            FeedbackEntity(
+                roomId = roomId,
+                date = LocalDate.now().toString(),
+                feedback = feedback,
+                embedding = embedding,
+            )
+        )
+        Log.d("FeedbackRepository", "후기 저장 [$roomId] 임베딩=${embedding != null}: ${feedback.take(30)}")
     }
 
-    fun loadAll(): List<FeedbackEntry> {
-        if (!file.exists()) return emptyList()
-        return try {
-            val arr = JSONArray(file.readText())
-            List(arr.length()) { i ->
-                val obj = arr.getJSONObject(i)
-                FeedbackEntry(
-                    date = obj.optString("date", ""),
-                    feedback = obj.optString("feedback", ""),
-                    roomId = obj.optString("roomId", "")
-                )
-            }
-        } catch (e: Exception) {
-            Log.e("FeedbackRepository", "피드백 읽기 실패", e)
-            emptyList()
-        }
+    suspend fun loadAll(): List<FeedbackEntry> = withContext(Dispatchers.IO) {
+        dao.getAll().map { FeedbackEntry(it.date, it.feedback, it.roomId) }
     }
 
-    // 최근 10개 피드백을 Gemini 프롬프트용 텍스트로 변환
-    fun buildRagContext(): String {
-        val entries = loadAll().takeLast(10)
-        if (entries.isEmpty()) return ""
-        return entries.joinToString("\n") { "- [${it.date}] ${it.feedback}" }
-    }
-
-    fun clearAll() {
-        file.delete()
-        Log.d("FeedbackRepository", "피드백 초기화 완료")
-    }
-
-    private fun save(entries: List<FeedbackEntry>) {
-        val arr = JSONArray()
-        entries.forEach { entry ->
-            arr.put(JSONObject().apply {
-                put("date", entry.date)
-                put("feedback", entry.feedback)
-                put("roomId", entry.roomId)
-            })
-        }
-        file.writeText(arr.toString())
-    }
+    suspend fun clearAll() = withContext(Dispatchers.IO) { dao.clear() }
 }

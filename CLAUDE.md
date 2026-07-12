@@ -41,10 +41,12 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
 | `service/AgentOrchestrator` | 하이브리드 하네스 통제실. Gemini FC + Guardrail 재시도 루프 |
 | `service/GuardrailService` | 추천 장소 영업 여부 팩트체크. fail-open 금지 — 검증 불가는 UNKNOWN |
 | `service/ModelDownloadService` | HF에서 모델 다운로드 (Foreground Service, Range 이어받기) |
+| `service/EmbeddingGemmaEmbedder` | EmbeddingGemma 임베더 (raw LiteRT+DJL). 프리픽스 API 강제, 로드→사용→해제 |
 | `service/GeminiService` | 레거시 단방향 경로 — 데드코드, 제거 예정. 새 코드에서 참조 금지 |
 | `data/pipeline/OnDeviceLlmPort` | 온디바이스 LLM 추상화 포트 (Gemma/Mock 런타임 교체) |
+| `data/pipeline/FeedbackRetriever` | 후기 검색 포트 (EmbeddingGemma 시맨틱 / 키워드 폴백 교체) |
 | `data/pipeline/StatusCompressionPipeline` | Gemma JSON 방어적 파싱 → 직전 상태와 증분 병합 → Room |
-| `data/repository/FeedbackRepository` | 모임 후기 저장 (현재 JSON 파일, RAG 전환 예정) |
+| `data/repository/FeedbackRepository` | 모임 후기 저장 (Room, 저장 시 임베딩 인덱싱) |
 | `data/local/` | Room DB (user_status 등) |
 
 ## 코드 컨벤션 — 이 레포에서 확립된 패턴을 따를 것
@@ -84,7 +86,9 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
   - 검색 쿼리: `"task: search result | query: "` + 질문
   - 둘 중 하나라도 빠지면 빌드·실행은 멀쩡한데 검색 품질만 조용히 저하됨
 - **골든 테스트 의무**: Python `sentence-transformers`로 동일 문장을 임베딩한
-  기준 벡터와 코사인 유사도 ≥ 0.99 검증 테스트 없이는 임베더 구현을 완료로 간주하지 않음
+  기준 벡터와 코사인 유사도를 검증하는 테스트 없이는 임베더 구현을 완료로 간주하지 않음.
+  **골든 임계값 = 0.93** (2026-07-12 실측 min 0.9466, unsloth 미러 int4 기준).
+  더불어 랭킹 일치 테스트(쿼리별 Python top-1 == 온디바이스 top-1)로 순위 보존 검증
 - 벡터 검색은 roomId 필터 → brute-force 코사인 top-k (수백 건 규모에서 충분,
   벡터 DB 도입은 성능 문제가 실측될 때만)
 - 임베더는 상시 상주하지 않는다: 로드 → 사용 → 해제 (Gemma E2B와 메모리 경합 방지)

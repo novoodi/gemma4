@@ -96,7 +96,8 @@ class SummaryViewModel(
 
     fun submitFeedback(feedback: String) {
         if (feedback.isBlank()) return
-        feedbackRepository.append(feedback = feedback, roomId = roomId)
+        // 임베딩 계산이 포함될 수 있어 IO 코루틴에서 (append 내부가 Dispatchers.IO)
+        viewModelScope.launch { feedbackRepository.append(feedback = feedback, roomId = roomId) }
     }
 }
 
