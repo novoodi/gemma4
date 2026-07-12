@@ -35,7 +35,11 @@ sealed class OrchestratorResult {
 // ── 에이전트 생명주기 이벤트 ──────────────────────────────────────────────────
 sealed class AgentEvent {
     data class OrchestrationStarted(val roomId: String, val messageCount: Int) : AgentEvent()
-    data class GemmaSummaryCompleted(val summary: String) : AgentEvent()
+    data class GemmaSummaryCompleted(
+        val summary: String,
+        val redactions: Int = 0,
+        val redactionsByCategory: Map<String, Int> = emptyMap(),
+    ) : AgentEvent()
     data class PromptGenerated(val attempt: Int, val prompt: String) : AgentEvent()
     data class ToolCalled(val name: String, val args: Map<String, Any?>, val result: String) : AgentEvent()
     data class JsonParsed(val rawJson: String) : AgentEvent()
@@ -192,10 +196,21 @@ class AgentOrchestrator(
         Log.d(TAG, "Gemma 1차 요약 시작 (온디바이스)")
         val gemmaSum = onDeviceLlm.summarizeForPrivacy(messages)
         Log.d(TAG, "Gemma 요약 완료: ${gemmaSum.take(80)}")
-        eventTracker?.onEvent(AgentEvent.GemmaSummaryCompleted(gemmaSum))
+
+        // 프라이버시 방화벽 최종 게이트 — Gemma가 지시를 어기고 이름/연락처를 흘리더라도
+        // 클라우드(Gemini) 전송 직전 결정론적 스크러버가 마스킹한다 (belt-and-suspenders).
+        val knownNames = buildKnownNames(messages, userStatus)
+        val scrub = PiiScrubber.scrub(gemmaSum, knownNames)
+        if (scrub.hadPii) {
+            Log.w(TAG, "PII 스크러버 마스킹 ${scrub.redactions}건: ${scrub.byCategory}")
+        }
+        val safeSummary = scrub.text
+        eventTracker?.onEvent(
+            AgentEvent.GemmaSummaryCompleted(safeSummary, scrub.redactions, scrub.byCategory)
+        )
 
         val ragContext = feedbackRepository.buildRagContext()
-        val basePrompt = buildSystemPrompt(gemmaSum, chatDate, userStatus, ragContext)
+        val basePrompt = buildSystemPrompt(safeSummary, chatDate, userStatus, ragContext)
 
         var attempt = 0
         var accumulatedFeedback = ""
@@ -446,6 +461,16 @@ class AgentOrchestrator(
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
+
+    /** 스크러버가 대조할 확정 이름 목록 — 발신자명 + 프로필 참가자(중복·공백 제거). */
+    private fun buildKnownNames(messages: List<Message>, userStatus: UserStatusEntity?): List<String> {
+        val fromMessages = messages.map { it.senderName }
+        val fromStatus = userStatus?.participants ?: emptyList()
+        return (fromMessages + fromStatus)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
 
     private fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
         // 장소명 = 주소 괄호'(' 또는 이유 구분 대시(—/–) 중 가장 먼저 나오는 지점 이전.

@@ -167,7 +167,16 @@ class ChatViewModel(
 
                         val entry: AgentDebugEntry? = when (event) {
                             is AgentEvent.GemmaSummaryCompleted ->
-                                AgentDebugEntry("🤖", "Gemma 온디바이스 요약 (원문 미전송)", event.summary)
+                                AgentDebugEntry("🤖", "Gemma 온디바이스 요약 (원문 미전송)", buildString {
+                                    append(event.summary)
+                                    if (event.redactions > 0) {
+                                        appendLine()
+                                        appendLine()
+                                        val detail = event.redactionsByCategory.entries
+                                            .joinToString(", ") { "${it.key} ${it.value}건" }
+                                        append("🛡 PII 스크러버: 클라우드 전송 직전 ${event.redactions}건 마스킹 ($detail)")
+                                    }
+                                })
                             is AgentEvent.PromptGenerated ->
                                 AgentDebugEntry("📝", "Gemini 전달 프롬프트 (시도 ${event.attempt})", event.prompt)
                             is AgentEvent.ToolCalled ->
