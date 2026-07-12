@@ -1,0 +1,175 @@
+rules_version = '2';
+
+// 모이미 Firestore 보안 규칙
+//
+// 원칙:
+//  - 채팅방·메시지는 그 방의 참여자(participantUids)만 읽고 쓸 수 있다.
+//  - senderId는 항상 요청자 본인 uid로 강제 → 방 멤버 간에도 발신자 위조 불가.
+//    (데모 샘플 대화는 admin 권한 시드 스크립트 functions/seed-sample.js로만 주입)
+//  - users 문서는 본인만. 타인의 fcmTokens는 Cloud Function(admin)만 읽으므로 규칙 우회.
+//  - 초대코드는 로그인 사용자가 get으로 조회(join용), 전수 열람(list)은 금지.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function uid() {
+      return request.auth.uid;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // users/{userId} — 본인 전용
+    // ══════════════════════════════════════════════════════════
+    match /users/{userId} {
+      function isSelf() {
+        return signedIn() && uid() == userId;
+      }
+      // 클라이언트가 쓰는 필드는 onboardingCompleted(bool), fcmTokens(list)뿐
+      function validUserDoc() {
+        return request.resource.data.keys().hasOnly(['onboardingCompleted', 'fcmTokens'])
+          && (!('onboardingCompleted' in request.resource.data)
+              || request.resource.data.onboardingCompleted is bool)
+          && (!('fcmTokens' in request.resource.data)
+              || request.resource.data.fcmTokens is list);
+      }
+
+      allow get: if isSelf();
+      allow list: if false;
+      allow create, update: if isSelf() && validUserDoc();
+      allow delete: if false;
+
+      // users/{uid}/roomReads/{roomId} — 본인 전용
+      match /roomReads/{roomId} {
+        allow read: if isSelf();
+        allow create, update: if isSelf()
+          && request.resource.data.keys().hasOnly(['lastReadTime'])
+          && request.resource.data.lastReadTime is timestamp;
+        allow delete: if isSelf();
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // inviteCodes/{code} — get 전용 조회 테이블 (list 금지)
+    // ══════════════════════════════════════════════════════════
+    match /inviteCodes/{code} {
+      function room(roomId) {
+        return get(/databases/$(database)/documents/rooms/$(roomId)).data;
+      }
+
+      allow get: if signedIn();
+      allow list: if false;
+
+      // 생성: {roomId}만 담고, 그 방의 멤버이며, 방 문서의 inviteCode와 코드가 일치할 때만
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['roomId'])
+        && request.resource.data.roomId is string
+        && uid() in room(request.resource.data.roomId).participantUids
+        && room(request.resource.data.roomId).inviteCode == code;
+
+      allow update: if false;
+
+      // 삭제: leaveRoom 뒷정리 — 방이 이미 없거나(재시도), 방이 빈 상태일 때만
+      allow delete: if signedIn()
+        && (
+          !exists(/databases/$(database)/documents/rooms/$(resource.data.roomId))
+          || room(resource.data.roomId).participantUids.size() == 0
+        );
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // rooms/{roomId}
+    // ══════════════════════════════════════════════════════════
+    match /rooms/{roomId} {
+      function isMember() {
+        return signedIn() && uid() in resource.data.participantUids;
+      }
+      function changedKeys() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+
+      // ① join: 비멤버가 자기 uid를 배열 끝에 하나만 추가(arrayUnion), 또는 이미 멤버인 no-op
+      function joinsSelf() {
+        return changedKeys().hasOnly(['participantUids'])
+          && (
+            (
+              !(uid() in resource.data.participantUids)
+              && request.resource.data.participantUids
+                 == resource.data.participantUids.concat([uid()])
+            )
+            || (
+              uid() in resource.data.participantUids
+              && request.resource.data.participantUids == resource.data.participantUids
+            )
+          );
+      }
+
+      // ② sendMessage batch의 방 메타 갱신 (멤버만)
+      function updatesLastMessage() {
+        return isMember()
+          && changedKeys().hasOnly(['lastMessage', 'lastMessageTime'])
+          && request.resource.data.lastMessage is string
+          && request.resource.data.lastMessageTime is timestamp;
+      }
+
+      // ③ leave: 멤버가 자기 uid만 제거 (타인 강퇴 불가)
+      function leavesSelf() {
+        return isMember()
+          && changedKeys().hasOnly(['participantUids'])
+          && request.resource.data.participantUids
+             == resource.data.participantUids.removeAll([uid()]);
+      }
+
+      // read: get(단건/구독) + list(whereArrayContains 쿼리) 모두 멤버 한정
+      allow get, list: if isMember();
+
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['name', 'participantUids', 'createdAt', 'inviteCode'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.participantUids == [uid()]
+        && request.resource.data.createdAt is int
+        && request.resource.data.inviteCode is string
+        && request.resource.data.inviteCode.matches('[A-HJ-NP-Z2-9]{6}');
+
+      allow update: if signedIn()
+        && (joinsSelf() || updatesLastMessage() || leavesSelf());
+
+      // delete: 마지막 멤버가 leave로 배열을 비운 이후에만 (삭제자는 이미 비멤버)
+      allow delete: if signedIn()
+        && resource.data.participantUids.size() == 0;
+
+      // ────────────────────────────────────────────────────────
+      // rooms/{roomId}/messages/{messageId}
+      // ────────────────────────────────────────────────────────
+      match /messages/{messageId} {
+        function roomData() {
+          return get(/databases/$(database)/documents/rooms/$(roomId)).data;
+        }
+        function isRoomMember() {
+          return signedIn() && uid() in roomData().participantUids;
+        }
+        // leaveRoom 뒷정리: 방이 빈 상태에서만 성립하는 임시 창구 (일괄 삭제용)
+        function roomBeingDeleted() {
+          return signedIn() && roomData().participantUids.size() == 0;
+        }
+
+        allow read: if isRoomMember() || roomBeingDeleted();
+
+        // 발신자 위조 차단: senderId는 반드시 본인 uid
+        allow create: if isRoomMember()
+          && request.resource.data.keys().hasOnly(['senderId', 'senderName', 'content', 'timestamp'])
+          && request.resource.data.senderId == uid()
+          && request.resource.data.senderName is string
+          && request.resource.data.content is string
+          && request.resource.data.content.size() <= 10000
+          && request.resource.data.timestamp is timestamp;
+
+        allow update: if false;
+        allow delete: if roomBeingDeleted();
+      }
+    }
+  }
+}
