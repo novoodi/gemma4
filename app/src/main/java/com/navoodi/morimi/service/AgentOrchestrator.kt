@@ -213,8 +213,9 @@ class AgentOrchestrator(
         )
 
         // RAG: 이번 모임 요약과 의미적으로 유사한 과거 후기를 온디바이스 시맨틱 검색으로 회수.
+        // 방 무관 — 이 사용자가 지난 모임들에서 남긴 취향이 새 톡방 추천에도 반영된다.
         // 피드백은 사용자 자유 텍스트(실명 가능) → 경계 통과 전 동일 PII 게이트 적용.
-        val retrieved = feedbackRetriever.retrieve(query = safeSummary, roomId = roomId, topK = 3)
+        val retrieved = feedbackRetriever.retrieve(query = safeSummary, topK = 3)
         val ragRaw = if (retrieved.isEmpty()) ""
             else retrieved.joinToString("\n") { "- [${it.date}] ${it.feedback}" }
         val ragContext = PiiScrubber.scrub(ragRaw, knownNames).text

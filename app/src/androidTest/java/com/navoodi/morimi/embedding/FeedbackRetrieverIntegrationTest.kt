@@ -45,13 +45,14 @@ class FeedbackRetrieverIntegrationTest {
             }
 
             val retriever = EmbeddingGemmaRetriever(embedder, dao)
-            val top = retriever.retrieve(query = "조용한 카페 추천해줘", roomId = "r1", topK = 1)
+            val top = retriever.retrieve(query = "조용한 카페 추천해줘", topK = 1)
 
             assertEquals("top-1 한 건이어야 함", 1, top.size)
             assertTrue("의미상 조용한 카페 후기가 top-1이어야 함: ${top.first().feedback}",
                 top.first().feedback.contains("카페"))
-            assertTrue("다른 방(r2) 후기가 새면 안 됨",
-                retriever.retrieve("조용한 카페", "r1", 3).none { it.feedback.contains("북카페") })
+            // 개인 취향 누적: 다른 방(r2)의 카페 후기도 회수 대상이어야 함(방 무관 검색)
+            assertTrue("다른 방 후기도 회수돼야(개인 취향 누적)",
+                retriever.retrieve("조용한 북카페 추천", topK = 4).any { it.feedback.contains("북카페") })
         } finally {
             db.close()
         }

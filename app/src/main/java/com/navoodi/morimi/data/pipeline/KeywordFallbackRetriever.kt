@@ -12,8 +12,9 @@ class KeywordFallbackRetriever(
     private val feedbackDao: FeedbackDao,
 ) : FeedbackRetriever {
 
-    override suspend fun retrieve(query: String, roomId: String, topK: Int): List<FeedbackEntry> {
-        val candidates = feedbackDao.getByRoom(roomId)
+    override suspend fun retrieve(query: String, topK: Int): List<FeedbackEntry> {
+        // 방 무관 — 이 사용자의 전체 후기에서 키워드 관련성 검색 (개인 취향 누적)
+        val candidates = feedbackDao.getAll()
         if (candidates.isEmpty()) return emptyList()
 
         val qTokens = tokenize(query)

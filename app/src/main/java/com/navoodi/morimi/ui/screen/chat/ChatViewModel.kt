@@ -51,6 +51,7 @@ class ChatViewModel(
     private val userStatusRepository = (application as MoimApp).userStatusRepository
     private val compressionPipeline: StatusCompressionPipeline = (application as MoimApp).compressionPipeline
     private val agentOrchestrator: AgentOrchestrator = (application as MoimApp).agentOrchestrator
+    private val feedbackRepository = (application as MoimApp).feedbackRepository
     val roomId: String = checkNotNull(savedStateHandle["roomId"])
 
     companion object {
@@ -91,6 +92,29 @@ class ChatViewModel(
     // 백그라운드 성향 압축 진행 여부 — "스피너 없는" 플로팅 상태배지 표시용
     private val _isCompressing = MutableStateFlow(false)
     val isCompressing: StateFlow<Boolean> = _isCompressing.asStateFlow()
+
+    // 후기 팝업 — 추천받은 방 재진입 시, 아직 후기 미작성이면 노출 (RAG 데이터 확보)
+    private val _showFeedbackPrompt = MutableStateFlow(false)
+    val showFeedbackPrompt: StateFlow<Boolean> = _showFeedbackPrompt.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            if (feedbackRepository.shouldPromptFeedback(roomId)) _showFeedbackPrompt.value = true
+        }
+    }
+
+    /**
+     * 후기 팝업/입력에서 저장 — 온디바이스 임베딩 인덱싱 후 다음 추천 RAG에 반영.
+     * 임베딩은 수십 초 걸리므로 **applicationScope**에서 실행한다 — 저장 직후 사용자가
+     * 화면을 벗어나 ViewModel이 파괴돼도 임베딩이 취소되지 않고 끝까지 완료된다.
+     */
+    fun submitFeedback(text: String) {
+        if (text.isBlank()) return
+        _showFeedbackPrompt.value = false
+        getApplication<MoimApp>().applicationScope.launch { feedbackRepository.append(text, roomId) }
+    }
+
+    fun dismissFeedbackPrompt() { _showFeedbackPrompt.value = false }
 
     fun onInputChange(text: String) { _inputText.value = text }
 
@@ -215,6 +239,8 @@ class ChatViewModel(
                 )) {
                     is OrchestratorResult.Success -> {
                         ChatRepository.saveSummary(result.summary)
+                        // 이 방을 "추천받은 방"으로 표시 → 다음 재진입 시 후기 팝업 트리거 근거
+                        feedbackRepository.markRecommended(roomId)
                         _summaryState.value = SummaryState.Success(result.summary)
                         FcmService.showAnalysisDoneNotification(
                             getApplication<MoimApp>().applicationContext, roomId, success = true

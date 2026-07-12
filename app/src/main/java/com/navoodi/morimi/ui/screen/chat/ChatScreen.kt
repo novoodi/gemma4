@@ -97,6 +97,7 @@ fun ChatScreen(
     val summaryState by viewModel.summaryState.collectAsStateWithLifecycle()
     val leaveState   by viewModel.leaveState.collectAsStateWithLifecycle()
     val isCompressing by viewModel.isCompressing.collectAsStateWithLifecycle()
+    val showFeedbackPrompt by viewModel.showFeedbackPrompt.collectAsStateWithLifecycle()
     val listState     = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -152,6 +153,13 @@ fun ChatScreen(
             title = { Text("오류") },
             text = { Text((summaryState as SummaryState.Error).message) },
             confirmButton = { TextButton(onClick = viewModel::resetSummaryState) { Text("확인") } },
+        )
+    }
+
+    if (showFeedbackPrompt) {
+        FeedbackPromptDialog(
+            onDismiss = viewModel::dismissFeedbackPrompt,
+            onSubmit = viewModel::submitFeedback,
         )
     }
 
@@ -512,3 +520,41 @@ private fun sameDay(t1: Long, t2: Long): Boolean {
 }
 
 private fun sameMinute(t1: Long, t2: Long) = t1 / 60_000 == t2 / 60_000
+
+// ── 후기 팝업 ─────────────────────────────────────────────────────────────────
+// 추천받은 방 재진입 시 노출. 저장 시 온디바이스 임베딩 인덱싱 → 다음 추천 RAG에 반영.
+@Composable
+private fun FeedbackPromptDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("지난 모임은 어떠셨어요?") },
+        text = {
+            Column {
+                Text(
+                    text = "후기를 남기면 다음 모임 추천이 더 정확해져요.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = { Text("예: 조용하고 분위기 좋았어 / 주차가 너무 불편했어") },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSubmit(text) }, enabled = text.isNotBlank()) { Text("저장") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("다음에") }
+        },
+    )
+}

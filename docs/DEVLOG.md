@@ -161,6 +161,51 @@
 - 남은 후속(범위 밖): ModelDownloadService가 embedding 모델(.tflite)+tokenizer.json도
   다운로드하도록 확장(현재 스파이크는 adb push). 16KB 정렬(DJL) Play 배포 전 대체 토크나이저
 
+## 2026-07-12 — RAG 실사용 UX·정합성 수정 (실기기 발견 이슈)
+
+실기기 시연 중 사용자가 연쇄적으로 발견한 결함들 수정. 전부 실기기로 재검증.
+
+**후기 진입점 결함 — 도달 불가능한 화면에 갇힘**
+- 추천 완료 → `AIReport` 화면 이동인데, 후기 UI는 아무도 navigate 안 하는 데드 화면
+  `Summary`에만 있었음 → **실사용자가 후기를 남길 방법이 아예 없었음**(RAG 입력 0)
+- 해결: **채팅방 재진입 팝업**으로 이전(사용자 제안). "추천받은 방 + 후기 미작성"이면 노출
+  - `RecommendedRoomEntity`(Room, DB v3): 추천 성사 방 영속 → 팝업 트리거 근거
+  - `FeedbackRepository.shouldPromptFeedback/markRecommended`, `ChatViewModel` 팝업 상태
+  - `ChatScreen`에 `FeedbackPromptDialog`. AIReport 후기 버튼 시도는 롤백
+
+**후기 저장 타이밍·크래시·취소 3연쇄**
+- 팝업 재출현: 임베딩(~20초) 후에야 저장돼, 그 사이 재진입하면 후기 없어 또 뜸 →
+  **텍스트 먼저 즉시 저장, 임베딩은 뒤따라 update**(`FeedbackDao.updateEmbedding`)
+- 크래시: `@Query`의 `FloatArray` 파라미터에 TypeConverter 미적용 → Room이 값마다
+  바인딩을 펼쳐 `SET embedding = ?,?,...(768개)` SQL 오류. **ByteArray로 받고
+  Converters로 변환**해 해결
+- 임베딩 유실: `JobCancellationException` — `submitFeedback`이 `viewModelScope`에서
+  임베딩을 돌려, 저장 직후 화면 이탈 시 ViewModel 파괴로 취소됨. **applicationScope로
+  이전** → 화면 나가도 끝까지 인덱싱(실기기: 후보 3→4 증가 확인)
+
+**RAG 검색 단위 — 방 단위 → 사용자(개인) 누적** (핵심 설계 정정)
+- 원래 의도: "지난 모임에서 좋았던 곳" 취향을 **새 톡방** 추천에 반영. 그런데 검색이
+  `roomId` 필터라 그 방 안에 갇혀 있었음 → 일회성 방이면 무의미
+- 후기는 폰 로컬(=이 사용자)에 저장되므로 **retrieve의 roomId 필터만 제거**하면
+  이 사용자의 전 방 후기에서 시맨틱 검색 = 개인 취향 크로스방 누적
+- `FeedbackRetriever.retrieve(query, topK)` 시그니처에서 roomId 제거, `getByRoom`→`getAll`.
+  저장·팝업 트리거는 roomId 유지. 실기기: 다른 방 후기가 회수 풀에 통합 확인
+- 테스트 갱신: 격리 검증 → 크로스방 회수 검증(RetrieverUnitTest/통합/E2E)
+
+**AIReport → 캘린더 navigation 복원 버그**
+- 멀티 백스택: "캘린더 가기" 시 채팅 탭 스택(...→방→AIReport)이 saveState됐다가
+  채팅 탭 복귀 시 AIReport가 되살아남 → **캘린더 이동 전 `popBackStack()`으로 AIReport 제거**
+  (⚠️ 하단 캘린더 "탭"으로 직접 나가는 경로는 미해결 — 후속)
+
+### 남은 후속 (미해결)
+- **이전 임베딩 실패 후기 재인덱싱**: JobCancellation으로 임베딩 null인 후기들이 남음.
+  앱 시작 시 `embedding IS NULL`인 후기를 일괄 재임베딩하는 백그라운드 잡 필요
+- **navigation 하단 탭 케이스**: AIReport에서 하단 캘린더/다른 탭으로 직접 나가도
+  채팅 탭 복원 시 AIReport 되살아남 → `goTab` 레벨에서 채팅 탭은 리스트로 리셋 검토
+- **간헐적 임베딩 실패 잔여**: 주원인(JobCancellation)은 해결. 다른 간헐 실패 관측 시 재시도 로직
+- **요약 결과 영속·재확인**(문제1 원본): 추천 결과가 인메모리라 앱 재시작 시 소실.
+  Room 영속 + 재진입 진입점은 별도 과제
+
 ### 2단계 최종: **EmbeddingGemma 온디바이스 RAG 구현 완료 ✅**
 "RAG"가 최근10 문자열 덤프 → 진짜 온디바이스 시맨틱 검색으로. 프라이버시 방화벽 서사
 확장(후기 임베딩·검색까지 전부 기기 내). 골든/랭킹/통합/단위로 다층 검증.

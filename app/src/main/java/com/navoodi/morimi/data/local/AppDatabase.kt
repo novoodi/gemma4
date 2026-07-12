@@ -6,12 +6,17 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 
-@Database(entities = [UserStatusEntity::class, FeedbackEntity::class], version = 2, exportSchema = false)
+@Database(
+    entities = [UserStatusEntity::class, FeedbackEntity::class, RecommendedRoomEntity::class],
+    version = 3,
+    exportSchema = false,
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun userStatusDao(): UserStatusDao
     abstract fun feedbackDao(): FeedbackDao
+    abstract fun recommendedRoomDao(): RecommendedRoomDao
 
     companion object {
         @Volatile

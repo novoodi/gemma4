@@ -50,31 +50,33 @@ class RetrieverUnitTest {
 
     private fun fakeDao(vararg items: FeedbackEntity) = object : FeedbackDao {
         override suspend fun insert(entity: FeedbackEntity) = 0L
+        override suspend fun updateEmbedding(id: Long, embedding: ByteArray?) {}
         override suspend fun getByRoom(roomId: String) = items.filter { it.roomId == roomId }
         override suspend fun getAll() = items.toList()
+        override suspend fun deleteByRoom(roomId: String) {}
         override suspend fun clear() {}
     }
 
-    @Test fun `roomId 필터 후 키워드 관련성 순으로 top-k`() = runBlocking {
+    @Test fun `전체 후기에서 키워드 관련성 순으로 top-k (방 무관)`() = runBlocking {
         val dao = fakeDao(
             FeedbackEntity(1, "r1", "2026-01-01", "조용한 카페에서 대화 좋았어요"),
             FeedbackEntity(2, "r1", "2026-01-02", "시끄러운 술집은 별로였어요"),
-            FeedbackEntity(3, "r1", "2026-01-03", "조용한 카페 커피 맛있었어요"),
-            FeedbackEntity(4, "r2", "2026-01-04", "조용한 카페 최고"),   // 다른 방 — 제외돼야
+            FeedbackEntity(3, "r2", "2026-01-03", "조용한 카페 커피 맛있었어요"),  // 다른 방도 회수돼야(개인 취향 누적)
+            FeedbackEntity(4, "r2", "2026-01-04", "등산은 힘들었어요"),
         )
-        val result = KeywordFallbackRetriever(dao).retrieve("조용한 카페 추천", roomId = "r1", topK = 2)
+        val result = KeywordFallbackRetriever(dao).retrieve("조용한 카페 추천", topK = 2)
 
         assertEquals(2, result.size)                             // topK 준수
-        assertTrue(result.all { it.roomId == "r1" })            // roomId 필터
-        assertTrue(result.all { "카페" in it.feedback })         // "술집" 후기는 관련성 0 → 제외
+        assertTrue("방 무관하게 카페 후기가 상위여야", result.all { "카페" in it.feedback })
+        // r1·r2 어느 방이든 관련 후기면 회수 (술집·등산은 관련성 0 → 제외)
     }
 
     @Test fun `쿼리 토큰이 없으면 최근순 폴백`() = runBlocking {
         val dao = fakeDao(
             FeedbackEntity(1, "r1", "2026-01-01", "첫 후기"),
-            FeedbackEntity(2, "r1", "2026-01-02", "둘째 후기"),
+            FeedbackEntity(2, "r2", "2026-01-02", "둘째 후기"),
         )
-        val result = KeywordFallbackRetriever(dao).retrieve("!", roomId = "r1", topK = 5)
-        assertEquals(2, result.size)   // 토큰 없음 → getByRoom(id DESC) 순 반환
+        val result = KeywordFallbackRetriever(dao).retrieve("!", topK = 5)
+        assertEquals(2, result.size)   // 토큰 없음 → getAll(id DESC) 순 반환
     }
 }

@@ -8,10 +8,14 @@ import com.navoodi.morimi.data.repository.FeedbackEntry
  * 온디바이스 LLM처럼 런타임 교체 가능하게 설계 — 임베딩 모델이 있으면
  * [EmbeddingGemmaRetriever](시맨틱), 없으면 [KeywordFallbackRetriever](키워드).
  * (CLAUDE.md 포트-어댑터 컨벤션: OnDeviceLlmPort + Gemma/Mock 패턴과 동일)
+ *
+ * **방을 넘어 개인 취향을 누적한다**: 후기는 폰 로컬(=이 사용자)에 저장되므로,
+ * 특정 방으로 좁히지 않고 이 사용자의 **모든 과거 후기**에서 관련성 높은 것을 회수한다.
+ * ("지난 모임에서 좋았던 곳" 취향이 새 톡방 추천에도 반영됨)
  */
 interface FeedbackRetriever {
-    /** [query]와 관련성 높은 [roomId]의 과거 후기를 상위 [topK]건 반환 */
-    suspend fun retrieve(query: String, roomId: String, topK: Int = 3): List<FeedbackEntry>
+    /** [query]와 관련성 높은 이 사용자의 과거 후기를 상위 [topK]건 반환(방 무관) */
+    suspend fun retrieve(query: String, topK: Int = 3): List<FeedbackEntry>
 }
 
 /** 벡터 유사도 유틸 — 순수 함수, JVM 단위 테스트 가능 */

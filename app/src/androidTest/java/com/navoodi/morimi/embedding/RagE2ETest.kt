@@ -53,7 +53,8 @@ class RagE2ETest {
         assumeTrue("Gemma 미준비", app.llmService.isModelAvailable)
 
         val repo = app.feedbackRepository
-        repo.feedbackDao.deleteByRoom(ROOM)
+        // 검색이 방 무관(전체 후기)이므로 격리를 위해 전체 정리. ⚠️ 이 기기의 후기 전부 삭제됨(테스트 전용).
+        repo.clearAll()
 
         // ── STEP 1-2: 후기 저장 (임베딩 인덱싱) ──
         Log.i(TAG, "STEP 1-2: 후기 저장·임베딩 인덱싱")
@@ -69,7 +70,7 @@ class RagE2ETest {
         Log.i(TAG, "STEP 3: 시맨틱 회수 → 추천")
         app.reinitializePipelines()   // 모델 존재 → EmbeddingGemmaRetriever
 
-        val ranked = app.feedbackRetriever.retrieve("조용한 카페에서 대화 나누기", ROOM, topK = 3)
+        val ranked = app.feedbackRetriever.retrieve("조용한 카페에서 대화 나누기", topK = 3)
         Log.i(TAG, "시맨틱 회수 순위: ${ranked.map { it.feedback.take(14) }}")
         assertTrue("카페 후기가 top-1이어야", ranked.first().feedback.contains("카페"))
 
@@ -103,7 +104,7 @@ class RagE2ETest {
             app.reinitializePipelines()  // 모델 부재 → KeywordFallbackRetriever
             assertFalse("임베더 비가용이어야", EmbeddingGemmaEmbedder(ctx).isAvailable)
 
-            val fbRanked = app.feedbackRetriever.retrieve("조용한 카페", ROOM, topK = 3)
+            val fbRanked = app.feedbackRetriever.retrieve("조용한 카페", topK = 3)
             Log.i(TAG, "폴백(키워드) 회수: ${fbRanked.map { it.feedback.take(14) }}")
             assertTrue("키워드 폴백도 카페 후기 회수", fbRanked.any { it.feedback.contains("카페") })
 
