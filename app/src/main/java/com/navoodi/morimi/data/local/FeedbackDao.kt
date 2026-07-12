@@ -17,6 +17,9 @@ interface FeedbackDao {
     @Query("SELECT * FROM feedback ORDER BY id DESC")
     suspend fun getAll(): List<FeedbackEntity>
 
+    @Query("DELETE FROM feedback WHERE roomId = :roomId")
+    suspend fun deleteByRoom(roomId: String)
+
     @Query("DELETE FROM feedback")
     suspend fun clear()
 }

@@ -179,6 +179,20 @@
 - 참고: Git Bash가 `/sdcard`를 `C:/Program Files/Git/sdcard`로 오변환 → adb 파일 확인은
   PowerShell 사용(이 세션 함정)
 
+## 2026-07-12 — RAG E2E 검증 (실기기, 실제 Gemini)
+
+`RagE2ETest`(계측)로 실제 MoimApp DI·프로덕션 경로를 그대로 태움. 94.5초, 통과.
+- **STEP 1-2**: 후기 3건 저장 → 전부 `임베딩=true`(EmbeddingGemma 인덱싱)
+- **STEP 3 시맨틱 회수→추천**: "조용한 카페 대화" 쿼리 회수 순위
+  `[홍대 조용한 카페, 강남 술집, 북한산 등산]` — **카페 top-1(cos 0.67)**.
+  Gemini 프롬프트에 카페 후기 주입 확인. **추천 성공(1회)**: 실제 Gemini가
+  "조용하고 아늑한/차분한 대화 공간/조용히 머무르기 좋은" 카페 3곳 추천 → **후기 반영 실증**
+- **STEP 4 폴백**: 임베딩 tflite 임시 제거 → `reinitializePipelines` → KeywordFallback 자동
+  전환, 카페 후기 회수·프롬프트 주입 확인. finally에서 모델 원복
+- 부수: `FeedbackDao.deleteByRoom` 추가(테스트 격리). **발견된 결함 없음** — 파이프라인
+  end-to-end 정상. (테스트 초기 `= runBlocking{…Log.i}`가 Int 반환→JUnit "should be void",
+  블록 본문으로 분리해 해결)
+
 ### 스파이크 1 최종 판정 (2026-07-12): **통과 — 방법 B 기술적 실현 가능 ✅**
 - 작업 1(런타임 공존) · 2(DJL 토크나이저) · 3(HF 게이팅) 모두 통과, 실기기 실증
 - 확보된 토대: 의존성 좌표, libc++_shared 4-ABI 동봉, DJL 토크나이저 동작,
