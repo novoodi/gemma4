@@ -28,6 +28,7 @@ private val statusOptions = listOf(
     "🎮 게임 중", "😴 쉬는 중", "🏃 운동 중", "✈️ 여행 중", "💼 일 중",
 )
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun ProfileEditScreen(onBack: () -> Unit, onSave: () -> Unit) {
     var name     by remember { mutableStateOf("김민준") }
