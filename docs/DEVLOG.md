@@ -281,3 +281,22 @@ UNVERIFIED 폴백, 실패 시 null(로그 후 스킵). JVM 단위 테스트 7건
 
 **남은 리스크**: 하이드레이션(applicationScope)과 신규 추천 저장의 경합은
 hydrate가 인메모리 우선(기존 키 미덮어쓰기)으로 방어 — 이론상 창은 앱 시작 직후 수 ms.
+
+## 2026-07-14 — 탭 네비게이션 스택 리셋: saveState/restoreState 제거 (A②)
+
+**결정**: 하단 탭 이동(`goTab`)과 AIReport 마무리 카드의 "캘린더에서 확인하기"에서
+`popUpTo(graph){saveState=true}` + `restoreState=true`를 제거하고 `popUpTo(graph.id)`
+단독으로 바꾼다. 탭 이동은 항상 해당 탭 루트로 리셋한다.
+
+**근거**: saveState로 팝된 스택(예: [ChatList, Chat, AIReport])이 통째로 보존됐다가,
+다른 탭 경유 후 채팅 탭 복귀 시 restoreState로 AIReport가 되살아나는 버그(실기기 확인).
+탭 목적지(Home/Calendar/ChatList/Profile)는 모두 저장소 Flow로 재구성되므로 탭 전환 간
+보존해야 할 화면 상태가 없다. 채팅 플로우는 navigate 진입·back 종료라 탭과 무관.
+
+**기각한 대안**: 채팅 탭만 조건부로 리셋(다른 탭은 restore 유지) — 복잡도만 늘고
+보존 이득이 없음. 전 탭 일괄 리셋이 이 앱의 정보구조에 정합.
+
+**실기기 검증(2026-07-14, SM-F966N)**: AIReport → "캘린더에서 확인하기" → 캘린더 →
+채팅 탭 복귀 → **ChatList 루트 표시(AIReport 안 되살아남)** 확인.
+
+**남은 리스크**: 탭별 스크롤 위치 등 미세 상태도 함께 리셋되나, 현 화면들엔 해당 없음.

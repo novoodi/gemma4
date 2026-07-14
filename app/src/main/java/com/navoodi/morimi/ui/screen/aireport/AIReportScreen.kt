@@ -246,13 +246,12 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                         events = events,
                         navController = navController,
                         onGoToCalendar = {
-                            // AIReport는 일회성 결과 화면 — 캘린더로 나갈 때 백스택에서 먼저 제거해
-                            // 이후 채팅 탭 복귀 시 분석 화면이 되살아나지 않게 한다.
-                            navController.popBackStack()
+                            // AIReport는 일회성 결과 화면 — 캘린더 이동은 탭 이동과 동일하게
+                            // 루트로 리셋한다(스택 보존 없음). saveState로 남긴 스택이 이후
+                            // 탭 복귀 때 분석 화면을 되살리는 부작용 방지 (goTab과 동일 정책).
                             navController.navigate(Screen.Calendar.route) {
-                                popUpTo(navController.graph.id) { saveState = true }
+                                popUpTo(navController.graph.id)
                                 launchSingleTop = true
-                                restoreState = true
                             }
                         },
                     )

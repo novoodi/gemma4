@@ -132,9 +132,11 @@ class MainActivity : ComponentActivity() {
                     navController.navigate(route) {
                         // graph.id는 NavGraph 컨테이너 자체 — 백스택 최하단에 항상 존재.
                         // Home이 백스택에 없는 경우(알림 직접 진입 등)에도 안전하게 동작.
-                        popUpTo(navController.graph.id) { saveState = true }
+                        // 탭 이동은 항상 해당 탭의 루트로 리셋 — saveState/restoreState로 스택을
+                        // 보존하면 탭 복귀 시 저장된 채팅방/AIReport가 함께 되살아난다(실기기 확인).
+                        // 탭 화면들은 저장소 Flow에서 재구성되므로 보존이 필요한 화면 상태가 없다.
+                        popUpTo(navController.graph.id)
                         launchSingleTop = true
-                        restoreState = true
                     }
                 }
 
