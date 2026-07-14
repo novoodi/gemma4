@@ -85,6 +85,10 @@ UserStatusEntity
 }
 ```
 
+> **constrained decoding**: `record_status` 툴 스키마로 출력을 문법 제약(LiteRT-LM
+> `enableConversationConstrainedDecoding`)해, 깨진 JSON을 구조적으로 차단합니다. 툴콜이
+> 나오지 않으면 자유텍스트 프롬프트 + 정규식 repair로 폴백합니다.
+
 ### Step 3 — 백그라운드 자동 트리거
 
 채팅 메시지가 10개 단위로 쌓일 때마다 압축을 자동 실행합니다.
@@ -402,7 +406,7 @@ GEMINI_API_KEY=발급받은_Gemini_API_키
 - [x] **추천 결과 Room 영속화 + 재확인 진입점** ("지난 추천 보기")
 - [x] **Reflection 패스** — 추천이 명시 제약(싫어요)을 위반하지 않는지 자기비평 (소프트 게이트)
 - [x] **임베딩 실패 후기 앱 시작 시 일괄 재인덱싱**
-- [ ] 온디바이스 constrained decoding — Gemma JSON 출력 형식 강제 (litertlm 바인딩 확인 선행)
+- [x] **온디바이스 constrained decoding** — 성향 압축을 툴 스키마 제약 디코딩으로 교체(깨진 JSON 구조적 차단)
 - [ ] Gemini 호출 Cloud Function 프록시화 (API 키 서버 이전)
 - [x] 초대코드 기반 방 참여
 - [x] 안읽음 메시지 뱃지
