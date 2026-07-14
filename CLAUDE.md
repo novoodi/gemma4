@@ -42,7 +42,6 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
 | `service/GuardrailService` | 추천 장소 영업 여부 팩트체크. fail-open 금지 — 검증 불가는 UNKNOWN |
 | `service/ModelDownloadService` | HF에서 모델 다운로드 (Foreground Service, Range 이어받기) |
 | `service/EmbeddingGemmaEmbedder` | EmbeddingGemma 임베더 (raw LiteRT+DJL). 프리픽스 API 강제, 로드→사용→해제 |
-| `service/GeminiService` | 레거시 단방향 경로 — 데드코드, 제거 예정. 새 코드에서 참조 금지 |
 | `data/pipeline/OnDeviceLlmPort` | 온디바이스 LLM 추상화 포트 (Gemma/Mock 런타임 교체) |
 | `data/pipeline/FeedbackRetriever` | 후기 검색 포트 (EmbeddingGemma 시맨틱 / 키워드 폴백 교체) |
 | `data/pipeline/StatusCompressionPipeline` | Gemma JSON 방어적 파싱 → 직전 상태와 증분 병합 → Room |

@@ -2,11 +2,7 @@ package com.navoodi.morimi.service
 
 import android.content.Context
 import android.util.Log
-import com.navoodi.morimi.data.local.UserStatusEntity
-import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
-import com.navoodi.morimi.data.model.Participant
-import com.navoodi.morimi.data.repository.FeedbackRepository
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Engine
@@ -25,14 +21,10 @@ class LlmService(private val context: Context) {
 
     companion object {
         const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
-        private const val NO_MARKDOWN = "별표, 샵, 대괄호 같은 특수기호 없이 일반 텍스트로만 답해줘."
     }
 
     private var engine: Engine? = null
-    private var activeConversation: Any? = null
     private val engineMutex = Mutex()
-    val feedbackRepository = FeedbackRepository(context)
-    private val geminiService = GeminiService()
 
     val modelPath: String
         get() = "${context.getExternalFilesDir("models")?.absolutePath}/$MODEL_FILENAME"
@@ -61,12 +53,6 @@ class LlmService(private val context: Context) {
             (conv as? AutoCloseable)?.close()
                 ?: conv::class.java.getMethod("close").invoke(conv)
         } catch (_: Exception) {}
-    }
-
-    private fun closeActiveConversation() {
-        val conv = activeConversation ?: return
-        activeConversation = null
-        closeConversation(conv)
     }
 
     /**
@@ -224,65 +210,7 @@ $transcript
         }
     }
 
-    // [Phase 1] 단방향 LLM 파이프라인 비활성화 — Phase 2 자율 검증 하네스 에이전트로 교체 예정
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun runPipeline(
-        roomId: String,
-        messages: List<Message>,
-        roomParticipants: List<Participant> = emptyList(),
-        userStatus: UserStatusEntity? = null
-    ): MeetingSummary {
-        throw UnsupportedOperationException(
-            "[Phase 1] 단방향 runPipeline 비활성화됨 — Phase 2 하네스 에이전트로 교체 예정"
-        )
-
-        /* ── 레거시 단방향 파이프라인 (비활성화) ────────────────────────────
-        val eng = checkNotNull(engine) { "엔진이 초기화되지 않았습니다" }
-        closeActiveConversation()
-
-        val senderIdToParticipant = roomParticipants.associateBy { it.id }
-        val transcript = messages.joinToString("\n") { msg ->
-            val p = senderIdToParticipant[msg.senderId]
-            val tag = if (p != null) "[${p.name}]" else "[${msg.senderName}]"
-            "$tag: ${msg.content}"
-        }
-
-        val chatDate = messages.firstOrNull()?.let {
-            Instant.ofEpochMilli(it.timestamp).atZone(ZoneId.systemDefault()).toLocalDate()
-        } ?: LocalDate.now()
-
-        // Conv A: 요약/장소/날짜/도시 순차 추출 (단방향 4-shot)
-        val convA = eng.createConversation()
-        activeConversation = convA
-        val summary: String; val location: String; val meetingDate: String; val city: String
-        try {
-            summary = withContext(Dispatchers.IO) {
-                convA.sendMessage("아래 모임 대화를 읽고 핵심 내용을 3~5문장으로 정리해줘. $NO_MARKDOWN\n\n$transcript").toString()
-            }
-            location = withContext(Dispatchers.IO) {
-                convA.sendMessage("위 대화에서 모임 장소 이름만 짧게 알려줘. $NO_MARKDOWN").toString()
-            }
-            meetingDate = withContext(Dispatchers.IO) {
-                val raw = convA.sendMessage(
-                    "대화가 이루어진 날짜는 $chatDate 입니다. 위 대화에서 최종 확정한 날짜를 YYYY-MM-DD 형식으로만. $NO_MARKDOWN"
-                ).toString()
-                Regex("\\d{4}-\\d{2}-\\d{2}").find(raw)?.value ?: "미정"
-            }
-            city = withContext(Dispatchers.IO) {
-                convA.sendMessage("위 모임 장소 도시를 한국어로만. $NO_MARKDOWN").toString().trim()
-            }
-        } finally { closeActiveConversation() }
-
-        val ragContext = feedbackRepository.buildRagContext()
-        val recommendation = geminiService.recommend(summary, location, meetingDate, city, ragContext, userStatus)
-        val weather = WeatherService.getWeather(city, meetingDate)
-
-        return MeetingSummary(roomId, summary, location, meetingDate, recommendation, weather, "")
-        ── 레거시 단방향 파이프라인 끝 ─────────────────────────────────────── */
-    }
-
     fun release() {
-        closeActiveConversation()
         engine = null
     }
 }
