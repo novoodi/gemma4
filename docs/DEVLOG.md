@@ -329,3 +329,62 @@ Gemini가 자가 수정하도록 유도한다.
 단위 테스트 9건(감지/미감지/접두사/불용어/오탐방지). 검증 후 주입 데이터 제거로 원복.
 
 **남은 리스크**: 형태 변화("조용한"↔"조용하고")·유의어("조용한"↔"아늑한")는 미탐(재현율<정밀도).
+
+## 2026-07-14 — B② constrained decoding 스파이크: 통과, 채택 결정
+
+**판정 기준(착수 전 명문화)**: litertlm 0.11 Kotlin 바인딩이 constrained decoding을 노출하는가.
+통과=API 존재+실기기 실증, 실패=미노출→repair 강화로 전환, 우회=타 경로.
+
+**조사 결과 — 사전 가정("미노출 가능성") 뒤집힘**: 코드 실측(AAR javap) + 공식 문서로
+constrained decoding이 실재함을 확인.
+- `ExperimentalFlags.enableConversationConstrainedDecoding: Boolean` (@RequiresOptIn ERROR)
+- 스키마 공급은 **툴 경로**: `ConversationConfig.tools`의 JSON 스키마로 툴콜 페이로드가
+  문법 제약됨. 별도 responseSchema(Gemini식) 없음. 결과는 `Message.toolCalls[i].arguments: Map`로
+  이미 파싱돼 수령 — 정규식 JSON repair 불필요.
+- C++ 레이어는 regex/JSON Schema/Lark(`decoding_constraint`)까지 지원하나 Kotlin은 툴 경로가 확실.
+- 참고: 캐시에 0.13.1도 있음(동일 플래그, LoraConfig만 추가) — 승격 카드 존재.
+
+**실기기 실증(2026-07-14, SM-F966N, Gemma E2B + GPU)**: `record_status`(participants/
+preferences/availability 스키마) 툴 + 플래그 켜고 고정 트랜스크립트 3회 실행 →
+3회 전부 유효 툴콜 args 수령(깨진 출력·툴콜 누락 0), 지연 ~5.0–5.7s(자유텍스트 압축과 동급),
+native 제약 에러 없음. "시끄러운 술집은 별로"→"싫어요:시끄러운 술집" 추출 정확.
+
+**결정: 채택.** 성향 압축 경로(`compressChatToStatus` → `StatusCompressionPipeline` 정규식
+repair)를 툴 기반 constrained decoding으로 교체 가능. 깨진 JSON이 구조적으로 불가능해짐.
+
+**본 구현 시 설계 포인트**:
+- `OnDeviceLlmPort.compress(): String` 추상화 — 툴콜 Map을 파이프라인이 이미 파싱하는 JSON
+  문자열로 직렬화해 넘기면 최소 변경(포트/폴백/파이프라인 무수정), 또는 포트를 구조화 반환으로
+  격상(더 깔끔하나 파급 큼). 전자 권장(폴백 Mock·정규식 방어층은 안전망으로 유지).
+- 실험적 API(@ExperimentalApi) + ExperimentalFlags 전역 상태 → 압축 호출 구간에서만 켜고 원복.
+- summarizeForPrivacy(자유 산문)는 대상 아님 — 스키마가 없으므로 그대로 둠.
+
+**스파이크 잔여물**: `LlmService.runConstrainedDecodingSpike`/`StatusRecorderTool`,
+`MoimApp.SPIKE_CONSTRAINED_DECODING`(기본 false). 본 구현 시 실코드로 흡수 또는 제거.
+
+## 2026-07-14 — B② 본 구현: 성향 압축을 constrained decoding으로 교체
+
+**결정**: 스파이크 채택에 따라 `LlmService.compressChatToStatus`를 툴 기반 constrained
+decoding으로 교체. `record_status`(participants/preferences/availability) 툴 스키마로
+툴콜 페이로드를 제약하고, args(Map)를 `StatusToolJson.encode`로 스키마 JSON 문자열 직렬화해
+반환 → `StatusCompressionPipeline`이 기존 그대로 파싱(포트·폴백·정규식 방어층 무변경).
+
+**설계**:
+- 1순위 constrained 툴 경로, 툴콜 없거나 예외 시 2순위 자유텍스트 폴백(`compressViaFreeText`,
+  기존 프롬프트). constrained가 조용히 품질만 떨어뜨리지 않게 안전망 유지.
+- `ExperimentalFlags.enableConversationConstrainedDecoding`는 전역 상태 → 압축 호출
+  구간에서만 켜고 finally에서 원복(summarizeForPrivacy 등 다른 경로 오염 방지).
+- `StatusToolJson`(순수 Kotlin) 분리로 직렬화 로직 JVM 단위 테스트(7건). summarizeForPrivacy는
+  스키마 없는 자유 산문이라 대상 아님(그대로).
+
+**실기기 검증(2026-07-14, SM-F966N, E2B+GPU)**: 실제 compressChatToStatus 호출 →
+`압축(constrained) 결과: {"participants":["양예찬","차민영","이승현"],"preferences":
+["좋아요:매운 음식","싫어요:시끄러운 술집"],"availability":["토요일 오후부터 가능"]}`.
+폴백 아닌 constrained 경로로 완전한 JSON 생성 확인. 단위 테스트: StatusToolJson 7 +
+StatusCompressionPipeline 7(동일 JSON 형태 파싱) 통과.
+
+**스파이크 잔여물 정리**: 스파이크 함수/플래그(runConstrainedDecodingSpike, MoimApp.SPIKE)
+제거, StatusRecorderTool은 실코드로 흡수. 임시 검증 훅도 제거.
+
+**남은 리스크**: ExperimentalFlags 전역 상태 → 향후 병렬 대화 도입 시 재검토(현재는 engineMutex
+직렬화로 무해). 실험적 API라 litertlm 업그레이드 시 시그니처 변화 가능(0.13.1 동일 확인).
