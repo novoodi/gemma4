@@ -25,6 +25,10 @@ interface FeedbackDao {
     @Query("SELECT * FROM feedback ORDER BY id DESC")
     suspend fun getAll(): List<FeedbackEntity>
 
+    /** 임베딩이 비어 있는 후기 — 저장 시점에 모델이 없었거나 인덱싱이 실패한 건. 재인덱싱 대상 */
+    @Query("SELECT * FROM feedback WHERE embedding IS NULL ORDER BY id ASC")
+    suspend fun getMissingEmbeddings(): List<FeedbackEntity>
+
     @Query("DELETE FROM feedback WHERE roomId = :roomId")
     suspend fun deleteByRoom(roomId: String)
 

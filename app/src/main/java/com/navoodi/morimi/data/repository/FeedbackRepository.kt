@@ -11,6 +11,7 @@ import com.navoodi.morimi.service.EmbeddingGemmaEmbedder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class FeedbackEntry(
     val date: String,
@@ -28,6 +29,7 @@ class FeedbackRepository(context: Context) {
     private val dao: FeedbackDao = AppDatabase.getInstance(context).feedbackDao()
     private val recommendedDao = AppDatabase.getInstance(context).recommendedRoomDao()
     private val embedder = EmbeddingGemmaEmbedder(context)
+    private val reindexRunning = AtomicBoolean(false)
 
     val feedbackDao: FeedbackDao get() = dao
     val embeddingEmbedder: EmbeddingGemmaEmbedder get() = embedder
@@ -58,6 +60,39 @@ class FeedbackRepository(context: Context) {
                     Log.d("FeedbackRepository", "후기 임베딩 인덱싱 완료 [$roomId] id=$id")
                 }
                 .onFailure { Log.e("FeedbackRepository", "임베딩 실패 — 텍스트만 유지 [$roomId] id=$id", it) }
+        }
+    }
+
+    /**
+     * 임베딩 누락 후기 재인덱싱 — 저장 시점에 모델이 없었거나 인덱싱이 실패해
+     * "텍스트만·벡터 null"로 남은 후기를 일괄 임베딩해 시맨틱 검색 대상으로 복구.
+     * 앱 시작·임베딩 모델 다운로드 완료 시 백그라운드로 호출된다.
+     *
+     * 전체를 한 번의 로드→사용→해제로 임베딩(엔진 반복 로드 방지)하되, 실패하면
+     * 이번 실행은 통째로 건너뛴다 — 다음 앱 시작에 다시 시도되므로 안전.
+     *
+     * @return 재인덱싱된 후기 수 (모델 부재·누락 없음·중복 실행이면 0)
+     */
+    suspend fun reindexMissingEmbeddings(): Int = withContext(Dispatchers.IO) {
+        if (!embedder.isAvailable) return@withContext 0
+        if (!reindexRunning.compareAndSet(false, true)) return@withContext 0
+        try {
+            val missing = dao.getMissingEmbeddings()
+            if (missing.isEmpty()) return@withContext 0
+            Log.i("FeedbackRepository", "임베딩 누락 후기 ${missing.size}건 재인덱싱 시작")
+            var indexed = 0
+            runCatching { embedder.embedDocuments(missing.map { it.feedback }) }
+                .onSuccess { vectors ->
+                    missing.zip(vectors).forEach { (entity, emb) ->
+                        dao.updateEmbedding(entity.id, Converters().fromFloatArray(emb))
+                        indexed++
+                    }
+                    Log.i("FeedbackRepository", "재인덱싱 완료 ${indexed}건")
+                }
+                .onFailure { Log.e("FeedbackRepository", "재인덱싱 실패 — 다음 시작 시 재시도", it) }
+            indexed
+        } finally {
+            reindexRunning.set(false)
         }
     }
 

@@ -4,6 +4,7 @@ import android.app.Application
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.navoodi.morimi.data.local.AppDatabase
 import com.navoodi.morimi.data.pipeline.EmbeddingGemmaRetriever
 import com.navoodi.morimi.data.pipeline.FeedbackRetriever
@@ -24,8 +25,14 @@ class MoimApp : Application() {
         super.onCreate()
         // 앱 시작 시 채널 미리 등록 — FcmService 기동 전에도 notify() 가능하도록
         FcmService.createNotificationChannel(this)
+        reindexFeedbackEmbeddings()
     }
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** 임베딩 누락 후기 백그라운드 재인덱싱 — 앱 시작·모델 다운로드 완료 시 */
+    private fun reindexFeedbackEmbeddings() {
+        applicationScope.launch { feedbackRepository.reindexMissingEmbeddings() }
+    }
 
     val llmService: LlmService by lazy { LlmService(this) }
     val database: AppDatabase by lazy { AppDatabase.getInstance(this) }
@@ -73,5 +80,7 @@ class MoimApp : Application() {
         _compressionPipeline = null
         _agentOrchestrator = null
         _feedbackRetriever = null
+        // 임베딩 모델이 방금 생겼을 수 있음 — 모델 부재로 못 인덱싱한 후기 복구
+        reindexFeedbackEmbeddings()
     }
 }
