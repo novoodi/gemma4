@@ -49,6 +49,11 @@ sealed class AgentEvent {
         val feedback: String,
         val unknownCount: Int = 0,
     ) : AgentEvent()
+    data class ReflectionEvaluated(
+        val attempt: Int,
+        val passed: Boolean,
+        val violations: List<String> = emptyList(),
+    ) : AgentEvent()
     data class OrchestrationFinished(val success: Boolean, val attempts: Int, val reason: String? = null) : AgentEvent()
 }
 
@@ -223,6 +228,9 @@ class AgentOrchestrator(
 
         var attempt = 0
         var accumulatedFeedback = ""
+        // 장소가 사실상 유효한(Guardrail 통과) 결과는 소프트 제약(Reflection)만 못 맞춰도
+        // 버리지 않는다 — 재시도로 개선을 노리되, 재시도 소진 시 최선의 결과로 폴백.
+        var fallbackSuccess: MeetingSummary? = null
 
         while (attempt < MAX_ATTEMPTS) {
             attempt++
@@ -238,6 +246,8 @@ class AgentOrchestrator(
 
             try {
                 val callResult = callGeminiWithTools(prompt, roomId, eventTracker)
+
+                // 검증 1 — Guardrail: 추천 장소가 실제로 존재/영업하는가 (하드 게이트)
                 val guardrail = guardrailService.verify(
                     placeNames = callResult.summary.places.map { it.name },
                     city = callResult.city
@@ -248,16 +258,36 @@ class AgentOrchestrator(
                     AgentEvent.GuardrailEvaluated(attempt, guardrail.passed, guardrail.feedbackForRetry, unknownCount)
                 )
 
-                if (guardrail.passed) {
-                    Log.d(TAG, "Guardrail 통과 ✓ — 총 $attempt 회")
+                // 검증 2 — Reflection: 추천이 사용자 명시 제약(싫어요)을 위반하지 않는가 (소프트 게이트)
+                val reflection = ReflectionService.reflect(
+                    places = callResult.summary.places,
+                    activities = callResult.summary.activities,
+                    preferences = userStatus?.preferences ?: emptyList(),
+                )
+                Log.d(TAG, "시도 $attempt Reflection: passed=${reflection.passed} 위반=${reflection.violations.size}건")
+                eventTracker?.onEvent(
+                    AgentEvent.ReflectionEvaluated(
+                        attempt, reflection.passed, reflection.violations.map { "'${it.constraint}' → ${it.matchedIn}" }
+                    )
+                )
+
+                val enriched = applyVerification(callResult.summary, guardrail.verifiedPlaces)
+
+                if (guardrail.passed && reflection.passed) {
+                    Log.d(TAG, "Guardrail+Reflection 통과 ✓ — 총 $attempt 회")
                     eventTracker?.onEvent(AgentEvent.OrchestrationFinished(true, attempt))
-                    val enriched = applyVerification(callResult.summary, guardrail.verifiedPlaces)
                     return@withContext OrchestratorResult.Success(enriched, attempt)
                 }
 
-                accumulatedFeedback = if (accumulatedFeedback.isBlank()) guardrail.feedbackForRetry
-                else "$accumulatedFeedback\n${guardrail.feedbackForRetry}"
-                Log.w(TAG, "시도 $attempt Guardrail 실패 → 자가 수정 피드백 누적 후 재시도")
+                // Guardrail은 통과했으나 Reflection만 실패 — 사실 오류는 아니므로 폴백 후보로 보존
+                if (guardrail.passed) fallbackSuccess = enriched
+
+                val combined = listOf(guardrail.feedbackForRetry, reflection.feedbackForRetry)
+                    .filter { it.isNotBlank() }
+                    .joinToString("\n")
+                accumulatedFeedback = if (accumulatedFeedback.isBlank()) combined
+                else "$accumulatedFeedback\n$combined"
+                Log.w(TAG, "시도 $attempt 검증 미통과 → 자가 수정 피드백 누적 후 재시도")
 
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -269,6 +299,13 @@ class AgentOrchestrator(
                     return@withContext OrchestratorResult.Failed(reason, attempt)
                 }
             }
+        }
+
+        // 재시도 소진 — 장소가 유효한 폴백이 있으면 그것으로 성공 처리(소프트 제약만 미충족).
+        fallbackSuccess?.let {
+            Log.w(TAG, "Reflection 제약 미충족이나 장소 유효 — 최선의 결과로 폴백 반환")
+            eventTracker?.onEvent(AgentEvent.OrchestrationFinished(true, MAX_ATTEMPTS))
+            return@withContext OrchestratorResult.Success(it, MAX_ATTEMPTS)
         }
 
         val reason = "최대 재시도 횟수($MAX_ATTEMPTS) 초과"

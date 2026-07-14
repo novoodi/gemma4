@@ -198,6 +198,10 @@ class ChatViewModel(
                                 "추천 결과를 검증했습니다."
                             else
                                 "결과를 다듬고 있습니다... (시도 ${event.attempt})"
+                            is AgentEvent.ReflectionEvaluated   -> if (event.passed)
+                                "취향 제약을 점검했습니다."
+                            else
+                                "싫어하시는 요소를 발견해 다시 추천합니다... (시도 ${event.attempt})"
                             is AgentEvent.OrchestrationFinished -> if (event.success) "완료!" else "분석을 마쳤습니다."
                         }
 
@@ -231,6 +235,13 @@ class ChatViewModel(
                                         append(if (event.passed) "통과 — 검증 완료" else "실패\n${event.feedback}")
                                         if (event.unknownCount > 0) append("\n⚠ 검증 불가 ${event.unknownCount}건 (장소 API 응답 없음)")
                                     }
+                                )
+                            is AgentEvent.ReflectionEvaluated ->
+                                AgentDebugEntry(
+                                    if (event.passed) "🪞" else "🚫",
+                                    "Reflection 자기비평 (시도 ${event.attempt})",
+                                    if (event.passed) "통과 — 사용자 제약(싫어요) 위반 없음"
+                                    else "제약 위반 감지:\n" + event.violations.joinToString("\n") { "• $it" }
                                 )
                             else -> null
                         }
