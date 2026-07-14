@@ -98,6 +98,7 @@ fun ChatScreen(
     val leaveState   by viewModel.leaveState.collectAsStateWithLifecycle()
     val isCompressing by viewModel.isCompressing.collectAsStateWithLifecycle()
     val showFeedbackPrompt by viewModel.showFeedbackPrompt.collectAsStateWithLifecycle()
+    val hasSavedSummary by viewModel.hasSavedSummary.collectAsStateWithLifecycle()
     val listState     = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
@@ -323,6 +324,25 @@ fun ChatScreen(
                             label = { Text("✨ AI로 이야기 정리하기", fontFamily = Pretendard, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MoColors.brand) },
                             colors = AssistChipDefaults.assistChipColors(containerColor = MoColors.brandSubtle),
                             border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = MoBlue100),
+                            shape = CircleShape,
+                        )
+                    }
+                }
+            }
+
+            // 지난 추천 재확인 진입점 — 영속 복원된 결과 포함(앱 재시작 후에도 유지)
+            if (hasSavedSummary) {
+                item(key = "last_report_chip") {
+                    Box(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+                        AssistChip(
+                            onClick = {
+                                navController.navigate(Screen.AIReport.createRoute(viewModel.roomId)) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            label = { Text("📋 지난 추천 보기", fontFamily = Pretendard, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = MoColors.textSecondary) },
+                            colors = AssistChipDefaults.assistChipColors(containerColor = MoColors.surfaceCard),
+                            border = AssistChipDefaults.assistChipBorder(enabled = true, borderColor = MoColors.border),
                             shape = CircleShape,
                         )
                     }

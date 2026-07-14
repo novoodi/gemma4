@@ -258,3 +258,26 @@
 
 **기각한 대안**: 저장 시점 스크러빙(후기 원본을 마스킹 저장) — 온디바이스 보관 데이터는
 원문 유지가 정당하고, 경계 통과 시점 단일 게이트가 감사(監査)에 더 단순.
+
+## 2026-07-14 — 추천 결과(MeetingSummary) Room 영속: JSON 직렬화 컬럼 채택
+
+**결정**: AI 추천 결과를 `meeting_summary` 테이블(roomId PK, json TEXT)에 JSON
+직렬화 컬럼으로 영속한다. 읽기 모델은 기존 `ChatRepository.summaries`(인메모리
+StateFlow)를 유지하고, 앱 시작 시 `hydrateSummaries()`로 복원(소비 화면 3곳 무수정).
+채팅방에 "지난 추천 보기" 칩 진입점 추가.
+
+**근거**: 추천 결과가 인메모리뿐이라 앱 재시작 시 소실 + 재확인 진입점 부재("문제1").
+places 리스트(중첩 객체+enum) 구조라 정규화(테이블 3개+관계) 대비 JSON 컬럼이 압도적으로
+단순하고, 이 데이터는 쿼리 대상이 아니라 통째로 읽는 스냅샷이라 정규화 이득이 없음.
+파싱은 방어적(`MeetingSummaryJson`, 순수 Kotlin) — 없는 필드 기본값, 모르는 enum
+UNVERIFIED 폴백, 실패 시 null(로그 후 스킵). JVM 단위 테스트 7건.
+
+**기각한 대안**: (a) 정규화 스키마 — 위 근거로 과설계. (b) kotlinx.serialization 도입 —
+의존성 추가 없이 org.json으로 충분(StatusCompressionPipeline 전례와 도구 일관).
+
+**부수 결정 — 마이그레이션 정책 전환**: v3→v4부터 `fallbackToDestructiveMigration()`에
+맡기지 않고 명시적 `Migration(3,4)` 사용. 후기+임베딩(A① 재인덱싱으로 복구까지 한
+실사용 데이터)이 버전 업그레이드에서 지워지면 안 되기 때문. v3 미만 레거시 폴백은 유지.
+
+**남은 리스크**: 하이드레이션(applicationScope)과 신규 추천 저장의 경합은
+hydrate가 인메모리 우선(기존 키 미덮어쓰기)으로 방어 — 이론상 창은 앱 시작 직후 수 ms.

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -52,6 +53,7 @@ class ChatViewModel(
     private val compressionPipeline: StatusCompressionPipeline = (application as MoimApp).compressionPipeline
     private val agentOrchestrator: AgentOrchestrator = (application as MoimApp).agentOrchestrator
     private val feedbackRepository = (application as MoimApp).feedbackRepository
+    private val summaryRepository = (application as MoimApp).summaryRepository
     val roomId: String = checkNotNull(savedStateHandle["roomId"])
 
     companion object {
@@ -96,6 +98,11 @@ class ChatViewModel(
     // 후기 팝업 — 추천받은 방 재진입 시, 아직 후기 미작성이면 노출 (RAG 데이터 확보)
     private val _showFeedbackPrompt = MutableStateFlow(false)
     val showFeedbackPrompt: StateFlow<Boolean> = _showFeedbackPrompt.asStateFlow()
+
+    // 이 방에 저장된(영속 복원 포함) 지난 추천이 있는지 — "지난 추천 보기" 진입점 노출 근거
+    val hasSavedSummary: StateFlow<Boolean> = ChatRepository.summaries
+        .map { it.containsKey(roomId) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     init {
         viewModelScope.launch {
@@ -239,6 +246,8 @@ class ChatViewModel(
                 )) {
                     is OrchestratorResult.Success -> {
                         ChatRepository.saveSummary(result.summary)
+                        // Room 영속 — 앱 재시작 후에도 "지난 추천 보기"로 재확인 가능
+                        summaryRepository.save(result.summary)
                         // 이 방을 "추천받은 방"으로 표시 → 다음 재진입 시 후기 팝업 트리거 근거
                         feedbackRepository.markRecommended(roomId)
                         _summaryState.value = SummaryState.Success(result.summary)

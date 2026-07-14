@@ -47,7 +47,8 @@ object ChatRepository {
 
     val currentUid: String? get() = auth.currentUser?.uid
 
-    // 요약 결과는 인메모리 유지 (AI 파이프라인 계층)
+    // 요약 결과 읽기 모델 (인메모리 StateFlow) — 영속은 SummaryRepository가 담당,
+    // 앱 시작 시 hydrateSummaries()로 복원된다
     private val _summaries = MutableStateFlow<Map<String, MeetingSummary>>(emptyMap())
     val summaries: StateFlow<Map<String, MeetingSummary>> = _summaries.asStateFlow()
 
@@ -379,5 +380,13 @@ object ChatRepository {
 
     fun saveSummary(summary: MeetingSummary) {
         _summaries.value = _summaries.value + (summary.roomId to summary)
+    }
+
+    /**
+     * 앱 시작 시 Room 영속본으로 복원. 하이드레이션이 끝나기 전에 새 추천이 먼저
+     * 들어왔을 수 있으므로 이미 인메모리에 있는(더 새로운) 요약은 덮어쓰지 않는다.
+     */
+    fun hydrateSummaries(persisted: List<MeetingSummary>) {
+        _summaries.value = persisted.associateBy { it.roomId } + _summaries.value
     }
 }

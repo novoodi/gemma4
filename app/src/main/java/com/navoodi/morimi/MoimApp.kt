@@ -12,7 +12,9 @@ import com.navoodi.morimi.data.pipeline.GemmaOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.KeywordFallbackRetriever
 import com.navoodi.morimi.data.pipeline.MockOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
+import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.data.repository.FeedbackRepository
+import com.navoodi.morimi.data.repository.SummaryRepository
 import com.navoodi.morimi.data.repository.UserStatusRepository
 import com.navoodi.morimi.service.AgentOrchestrator
 import com.navoodi.morimi.service.FcmService
@@ -26,6 +28,10 @@ class MoimApp : Application() {
         // 앱 시작 시 채널 미리 등록 — FcmService 기동 전에도 notify() 가능하도록
         FcmService.createNotificationChannel(this)
         reindexFeedbackEmbeddings()
+        // 지난 추천 결과 복원 — 앱 재시작 후에도 "지난 추천 보기" 가능
+        applicationScope.launch {
+            ChatRepository.hydrateSummaries(summaryRepository.loadAll())
+        }
     }
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -40,6 +46,7 @@ class MoimApp : Application() {
         UserStatusRepository(database.userStatusDao())
     }
     val feedbackRepository: FeedbackRepository by lazy { FeedbackRepository(this) }
+    val summaryRepository: SummaryRepository by lazy { SummaryRepository(this) }
 
     // Phase 2: 온디바이스 상태 압축 파이프라인
     // lazy 대신 nullable backing field — 모델 다운로드 후 reinitializePipelines()로 재생성 가능
