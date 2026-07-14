@@ -19,9 +19,10 @@
 | **방 나가기** | 혼자면 방·메시지·초대코드 일괄 삭제, 멤버가 있으면 본인만 퇴장 |
 | **프라이버시 방화벽** | Gemma 4가 온디바이스에서 채팅 원문을 익명화 요약 + `PiiScrubber`가 전송 직전 이름·연락처를 결정론적으로 마스킹 — 원문·개인정보는 디바이스 밖으로 전송되지 않음 |
 | **성향 프로필 압축** | Gemma 4가 백그라운드에서 채팅 10개마다 선호도·가용성을 JSON으로 압축, Room DB에 증분 병합 저장 |
-| **온디바이스 시맨틱 RAG** | EmbeddingGemma-300m이 후기를 기기 안에서 임베딩·검색 — 지난 모임 취향을 새 톡방 추천에 반영(사용자 단위) |
+| **온디바이스 시맨틱 RAG** | EmbeddingGemma-300m이 후기를 기기 안에서 임베딩·검색 — 지난 모임 취향을 새 톡방 추천에 반영(사용자 단위). 앱 시작 시 임베딩 누락 후기를 백그라운드로 일괄 재인덱싱 |
 | **AI 개인화 추천** | Gemini가 Gemma 요약문 + 참여자 성향 프로필(Room DB) + 관련 과거 후기(RAG)를 반영해 맞춤 추천 |
-| **자율 검증 하네스** | Guardrail이 장소 영업 여부를 팩트 체크, 실패 시 자가 수정 후 최대 3회 재시도 |
+| **자율 검증 하네스** | Guardrail이 장소 영업 여부를 팩트 체크(하드 게이트), Reflection이 추천의 사용자 제약(싫어요) 위반을 자기비평(소프트 게이트) — 실패 시 피드백 누적 후 최대 3회 자가 수정 재시도 |
+| **추천 결과 재확인** | AI 추천 결과를 Room에 영속 저장 — 앱 재시작 후에도 채팅방의 "지난 추천 보기"로 다시 열람 |
 | **날씨 조회** | 기상청 단기예보 API로 모임 당일 날씨 자동 확인 |
 | **모임 후기 저장** | 채팅방 재진입 시 후기 팝업 → 온디바이스 임베딩 인덱싱 → 다음 추천에 시맨틱 반영 |
 | **인앱 캘린더** | 확정된 모임 일정을 앱 내 캘린더에 추가 |
@@ -130,22 +131,37 @@ Gemma 요약문 + Room DB 성향 프로필 + **EmbeddingGemma로 회수한 과�
 > 일어나 **"후기조차 기기 밖으로 나가지 않습니다"**. 검색은 방 단위가 아니라 **사용자 단위**라,
 > 지난 모임에서 좋았던 취향이 새 톡방 추천에도 누적 반영됩니다. (모델 미다운로드 시 키워드 폴백)
 
-### Step 6 — 자율 검증 하네스 (Guardrail)
+### Step 6 — 자율 검증 하네스 (Guardrail + Reflection)
 
-GuardrailService가 Gemini 추천 결과의 장소 영업 여부를 팩트 체크합니다.
-검증 실패 시 피드백을 컨텍스트에 누적하고 최대 3회 자가 수정 재시도합니다.
+Gemini 추천 결과를 두 계층으로 검증합니다. 검증 실패 시 피드백을 컨텍스트에 누적하고
+최대 3회 자가 수정 재시도합니다.
+
+- **Guardrail (하드 게이트)** — `GuardrailService`가 추천 장소의 영업 여부를 카카오 로컬 API로
+  팩트 체크. 존재하지 않는 장소(CLOSED)는 재시도로 걸러내고, 검증 불가(UNKNOWN)는
+  "검증됨"과 구분해 정직하게 표기(fail-open 금지).
+- **Reflection (소프트 게이트)** — `ReflectionService`가 추천(장소명+이유, 활동)이 사용자
+  성향 프로필의 "싫어요:" 제약을 위반하는지 결정론적으로 자기비평. 프롬프트 지시는 1차 방어일
+  뿐, 집행은 이 게이트가 한다(`PiiScrubber` 철학의 확장). 장소가 유효한 결과는 소프트 제약을
+  못 맞춰도 폴백으로 보존해 총 실패를 막는다.
 
 ```
-Gemini 결과 → GuardrailService.verify()
-  통과 → OrchestratorResult.Success → UI 표시
-  실패 → 피드백 누적 → Gemini 재시도 (최대 3회)
+Gemini 결과 → Guardrail.verify() + Reflection.reflect()
+  둘 다 통과 → OrchestratorResult.Success → UI 표시
+  실패 → 피드백 누적(장소 교체 / 싫어요 제외) → Gemini 재시도 (최대 3회)
 ```
 
-### Step 7 — 후기 저장 + 온디바이스 임베딩 인덱싱
+### Step 7 — 추천 결과 영속 + 재확인 진입점
+
+검증을 통과한 추천 결과(`MeetingSummary`)를 `meeting_summary` 테이블(JSON 직렬화 컬럼)에
+저장합니다. 앱 시작 시 복원되어, 앱을 재시작한 뒤에도 채팅방의 **"지난 추천 보기"** 칩으로
+지난 추천을 다시 열람할 수 있습니다.
+
+### Step 8 — 후기 저장 + 온디바이스 임베딩 인덱싱
 
 모임 후 **채팅방에 다시 들어오면 후기 팝업**이 떠서 후기를 입력받습니다. 저장 시 텍스트를 즉시
 Room에 넣고, EmbeddingGemma로 벡터를 인덱싱합니다(임베딩은 앱 스코프에서 수행 — 화면을 벗어나도
-끝까지 완료). 후기는 폰 로컬(=사용자별)에 쌓여, 다음 추천 때 Step 5의 시맨틱 검색으로 회수됩니다.
+끝까지 완료). 임베딩에 실패해 벡터가 비어 있던 후기는 다음 앱 시작 시 일괄 재인덱싱으로 복구됩니다.
+후기는 폰 로컬(=사용자별)에 쌓여, 다음 추천 때 Step 5의 시맨틱 검색으로 회수됩니다.
 
 ---
 
@@ -159,14 +175,14 @@ app/
 │
 ├── data/
 │   ├── local/
-│   │   ├── AppDatabase.kt        # Room DB 싱글톤 (moim_database)
+│   │   ├── AppDatabase.kt        # Room DB 싱글톤 (moim_database, v4 — user_status/feedback/recommended_room/meeting_summary)
 │   │   ├── UserStatusEntity.kt   # user_status 테이블 엔티티
 │   │   ├── UserStatusDao.kt      # @Insert(onConflict=REPLACE) / @Query DAO
 │   │   └── Converters.kt         # List<String> ↔ String ("||" 구분자) TypeConverter
 │   ├── model/
 │   │   ├── Message.kt            # 채팅 메시지
 │   │   ├── ChatRoom.kt           # 모임방 (inviteCode, lastMessage, lastMessageTime 포함)
-│   │   ├── MeetingSummary.kt     # AI 분석 결과 (요약/장소/날짜/추천/날씨)
+│   │   ├── MeetingSummary.kt     # AI 분석 결과 (요약/장소/날짜/추천/날씨, Room 영속)
 │   │   └── CalendarEvent.kt      # 캘린더 일정
 │   ├── pipeline/
 │   │   ├── OnDeviceLlmPort.kt    # 온디바이스 LLM 교체 계약 (compress / summarizeForPrivacy)
@@ -174,18 +190,22 @@ app/
 │   │   ├── GemmaOnDeviceLlm.kt   # LlmService 위임 구현
 │   │   └── StatusCompressionPipeline.kt  # 압축 트리거·파싱·Room Upsert 오케스트레이션
 │   └── repository/
-│       ├── ChatRepository.kt     # Firestore 실시간 구독 (방·메시지·읽음 시각·초대코드)
+│       ├── ChatRepository.kt     # Firestore 실시간 구독 (방·메시지·읽음 시각·초대코드) + 요약 인메모리 캐시
 │       ├── UserStatusRepository.kt # UserStatus Room DB 접근
 │       ├── CalendarRepository.kt # 일정 인메모리 StateFlow
-│       ├── FeedbackRepository.kt # 모임 피드백 로컬 저장 (append-only JSON)
+│       ├── FeedbackRepository.kt # 모임 후기 Room 저장 + 온디바이스 임베딩 인덱싱·재인덱싱
+│       ├── SummaryRepository.kt  # AI 추천 결과(MeetingSummary) Room 영속 (JSON 컬럼)
 │       └── FcmRepository.kt      # FCM 토큰 Firestore 저장
 │
 ├── service/
 │   ├── LlmService.kt             # Gemma 4 엔진 초기화·compress·summarizeForPrivacy
+│   ├── EmbeddingGemmaEmbedder.kt # EmbeddingGemma 임베더 (raw LiteRT + DJL 토크나이저)
+│   ├── PiiScrubber.kt            # 클라우드 전송 직전 결정론적 PII 마스킹 게이트 (순수 Kotlin)
 │   ├── AgentOrchestrator.kt      # 프라이버시 방화벽 + Gemini Function Calling + 하네스 루프
-│   ├── GuardrailService.kt       # 장소 영업 여부 팩트 체크 + 피드백 생성
+│   ├── GuardrailService.kt       # 장소 영업 여부 팩트 체크 + 피드백 생성 (하드 게이트)
+│   ├── ReflectionService.kt      # 추천의 사용자 제약(싫어요) 위반 자기비평 (소프트 게이트, 순수 Kotlin)
 │   ├── FcmService.kt             # FCM 토큰 갱신 및 포그라운드 푸시 알림 표시
-│   ├── GeminiService.kt          # (레거시) Gemini API 직접 호출
+│   ├── ModelDownloadService.kt   # HF에서 모델 다운로드 (Foreground Service, Range 이어받기)
 │   └── WeatherService.kt         # 기상청 단기예보 API 연동
 │
 └── ui/
@@ -196,8 +216,8 @@ app/
     │   ├── home/                 # 모임방 목록 + 생성 다이얼로그 + 안읽음 뱃지
     │   ├── joinroom/             # 초대코드 입장
     │   ├── chat/                 # 실시간 채팅 + AI 요약 트리거 + 백그라운드 압축
-    │   ├── ailoading/            # AI 파이프라인 진행 상태 UI
-    │   ├── aireport/             # AI 분석 이벤트 로그
+    │   ├── ailoading/            # AI 파이프라인 진행 상태 + 검증 하네스 디버그 로그
+    │   ├── aireport/             # AI 추천 결과 카드 (장소·활동·준비물, 캘린더 담기)
     │   ├── summary/              # AI 분석 결과 카드 + 피드백 입력
     │   ├── calendar/             # 인앱 캘린더
     │   ├── vote/                 # 투표 화면
@@ -255,13 +275,18 @@ app/
   → 장소/활동/준비물 추천 생성
         │
         ▼
-[GuardrailService — 팩트 체크]
-  장소 영업 여부 검증
+[검증 하네스 — Guardrail + Reflection]
+  Guardrail: 장소 영업 여부 팩트 체크 (하드 게이트)
+  Reflection: 사용자 제약(싫어요) 위반 자기비평 (소프트 게이트)
   실패 → 피드백 주입 후 Gemini 재시도 (최대 3회)
   통과 → OrchestratorResult.Success
         │
         ▼
-[SummaryScreen]
+[SummaryRepository — Room 영속]
+  meeting_summary 테이블에 추천 결과 저장 → "지난 추천 보기"로 재확인
+        │
+        ▼
+[AIReportScreen]
   요약 / 날짜 / 장소 / 날씨 / AI 추천 카드 표시
         │
         ▼
@@ -269,7 +294,7 @@ app/
         │
         ▼
 [FeedbackRepository.append()]
-  로컬 JSON에 누적 저장 → 다음 모임 추천 시 자동 반영
+  Room 저장 + 온디바이스 임베딩 인덱싱 → 다음 모임 추천 시 시맨틱 회수
 ```
 
 ---
@@ -359,7 +384,8 @@ GEMINI_API_KEY=발급받은_Gemini_API_키
 - 채팅·방 데이터는 Firebase Firestore에 영구 저장됩니다 (앱 재시작 후에도 유지).
 - 참여자 성향 프로필(`UserStatus`)은 Room DB에 영구 저장됩니다.
 - 후기 데이터는 Room DB에 저장되고 EmbeddingGemma로 온디바이스 임베딩 인덱싱됩니다 (사용자별·기기 내).
-- 캘린더·AI 추천 결과는 앱 메모리에만 저장되며 앱 재시작 시 초기화됩니다 (Room 영속화 예정).
+- AI 추천 결과는 Room DB(`meeting_summary`)에 영속 저장되어 앱 재시작 후에도 "지난 추천 보기"로 재확인됩니다.
+- 캘린더 일정은 앱 메모리에만 저장되며 앱 재시작 시 초기화됩니다 (Room 영속화 예정).
 - 카카오맵 장소 검색은 현재 Mock 결과를 반환하며, 실제 API 연동은 추후 개발 예정입니다.
 
 ---
@@ -373,9 +399,10 @@ GEMINI_API_KEY=발급받은_Gemini_API_키
 - [x] 온디바이스 모델 다운로드 (Gemma + EmbeddingGemma·토크나이저, Range 이어받기)
 - [x] Firestore 기반 채팅·방 데이터 실시간 영구 저장
 - [x] Firebase Auth Google 로그인 / FCM 푸시 알림
-- [ ] 추천 결과 Room 영속화 + 재확인 진입점 (현재 인메모리)
-- [ ] Reflection 패스 — 추천이 명시 제약(싫어요)을 위반하지 않는지 자기비평
-- [ ] 임베딩 실패 후기 앱 시작 시 일괄 재인덱싱
+- [x] **추천 결과 Room 영속화 + 재확인 진입점** ("지난 추천 보기")
+- [x] **Reflection 패스** — 추천이 명시 제약(싫어요)을 위반하지 않는지 자기비평 (소프트 게이트)
+- [x] **임베딩 실패 후기 앱 시작 시 일괄 재인덱싱**
+- [ ] 온디바이스 constrained decoding — Gemma JSON 출력 형식 강제 (litertlm 바인딩 확인 선행)
 - [ ] Gemini 호출 Cloud Function 프록시화 (API 키 서버 이전)
 - [x] 초대코드 기반 방 참여
 - [x] 안읽음 메시지 뱃지
