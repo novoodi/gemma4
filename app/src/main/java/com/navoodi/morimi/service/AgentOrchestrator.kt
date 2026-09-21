@@ -1,7 +1,6 @@
 package com.navoodi.morimi.service
 
 import android.util.Log
-import com.navoodi.morimi.BuildConfig
 import com.navoodi.morimi.data.local.UserStatusEntity
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
@@ -9,15 +8,7 @@ import com.navoodi.morimi.data.model.RecommendedPlace
 import com.navoodi.morimi.data.model.VerificationStatus
 import com.navoodi.morimi.data.pipeline.FeedbackRetriever
 import com.navoodi.morimi.data.pipeline.OnDeviceLlmPort
-import com.google.genai.Client
-import com.google.genai.types.Content
-import com.google.genai.types.FunctionCall
-import com.google.genai.types.FunctionDeclaration
-import com.google.genai.types.FunctionResponse
-import com.google.genai.types.GenerateContentConfig
-import com.google.genai.types.Part
-import com.google.genai.types.Schema
-import com.google.genai.types.Tool
+import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -66,7 +57,8 @@ interface AgentEventTracker {
  *
  * 프라이버시 방화벽 흐름:
  *   1) onDeviceLlm.summarizeForPrivacy() — 채팅 원문을 디바이스 내에서 익명화 요약
- *   2) 요약문만 Gemini에 전송 (채팅 원문은 절대 클라우드로 나가지 않음)
+ *   2) 요약문만 Gemini에 전송 (채팅 원문은 절대 클라우드로 나가지 않음).
+ *      전송은 [GeminiGateway] → [CloudProxy](Functions 프록시) 경유 — API 키는 앱에 없다
  *   3) Gemini Function Calling 처리 (getWeather / searchPlace)
  *   4) GuardrailService 팩트 체크
  *   5) 실패 시 피드백을 컨텍스트에 누적 후 최대 [MAX_ATTEMPTS]회 재시도
@@ -76,7 +68,7 @@ class AgentOrchestrator(
     private val guardrailService: GuardrailService,
     private val feedbackRetriever: FeedbackRetriever,
     private val onDeviceLlm: OnDeviceLlmPort,
-    private val apiKey: String = BuildConfig.GEMINI_API_KEY
+    private val geminiGateway: GeminiGateway = CloudGeminiGateway(),
 ) {
     companion object {
         private const val TAG = "AgentOrchestrator"
@@ -85,95 +77,55 @@ class AgentOrchestrator(
         // 최종 응답을 내지 않는 상황에서 무한 루프를 방지(바깥 MAX_ATTEMPTS와 별개).
         private const val MAX_TOOL_ROUNDS = 8
         private const val MODEL_NAME = "gemini-3.5-flash"
+        private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
     }
 
-    // ── Gemini Tool 스키마 선언 ───────────────────────────────────────────────
+    // ── Gemini Tool 스키마 선언 (REST 와이어 포맷 — GeminiWire) ────────────────
 
-    private val getWeatherDecl: FunctionDeclaration = FunctionDeclaration.builder()
-        .name("getWeather")
-        .description("기상청 API를 통해 특정 도시의 날씨 예보를 조회합니다")
-        .parameters(
-            Schema.builder()
-                .type("OBJECT")
-                .properties(
-                    mapOf(
-                        "city" to Schema.builder()
-                            .type("STRING")
-                            .description("도시명 (한국어, 예: 서울, 부산, 홍대)")
-                            .build(),
-                        "date" to Schema.builder()
-                            .type("STRING")
-                            .description("날짜 YYYY-MM-DD 형식. 미확정이면 '미정'")
-                            .build()
-                    )
-                )
-                .required(listOf("city", "date"))
-                .build()
-        )
-        .build()
+    private val getWeatherDecl: JSONObject = GeminiWire.functionDeclaration(
+        name = "getWeather",
+        description = "기상청 API를 통해 특정 도시의 날씨 예보를 조회합니다",
+        parameters = GeminiWire.schema(
+            type = "OBJECT",
+            properties = mapOf(
+                "city" to GeminiWire.schema("STRING", "도시명 (한국어, 예: 서울, 부산, 홍대)"),
+                "date" to GeminiWire.schema("STRING", "날짜 YYYY-MM-DD 형식. 미확정이면 '미정'"),
+            ),
+            required = listOf("city", "date"),
+        ),
+    )
 
-    private val searchPlaceDecl: FunctionDeclaration = FunctionDeclaration.builder()
-        .name("searchPlace")
-        .description("카카오맵 API로 모임 장소 후보를 검색합니다")
-        .parameters(
-            Schema.builder()
-                .type("OBJECT")
-                .properties(
-                    mapOf(
-                        "query" to Schema.builder()
-                            .type("STRING")
-                            .description("검색어 (예: 강남 이탈리안 레스토랑, 홍대 조용한 카페)")
-                            .build(),
-                        "city" to Schema.builder()
-                            .type("STRING")
-                            .description("도시명 (한국어)")
-                            .build()
-                    )
-                )
-                .required(listOf("query", "city"))
-                .build()
-        )
-        .build()
+    private val searchPlaceDecl: JSONObject = GeminiWire.functionDeclaration(
+        name = "searchPlace",
+        description = "카카오맵 API로 모임 장소 후보를 검색합니다",
+        parameters = GeminiWire.schema(
+            type = "OBJECT",
+            properties = mapOf(
+                "query" to GeminiWire.schema("STRING", "검색어 (예: 강남 이탈리안 레스토랑, 홍대 조용한 카페)"),
+                "city" to GeminiWire.schema("STRING", "도시명 (한국어)"),
+            ),
+            required = listOf("query", "city"),
+        ),
+    )
 
-    private val responseSchema: Schema = Schema.builder()
-        .type("OBJECT")
-        .properties(
-            mapOf(
-                "summary" to Schema.builder()
-                    .type("STRING")
-                    .description("모임 전체 요약 (날씨·장소·분위기 포함)")
-                    .build(),
-                "recommendedPlaces" to Schema.builder()
-                    .type("ARRAY")
-                    .items(Schema.builder().type("STRING").build())
-                    .description("추천 장소 목록 (2~3곳)")
-                    .build(),
-                "recommendedActivities" to Schema.builder()
-                    .type("ARRAY")
-                    .items(Schema.builder().type("STRING").build())
-                    .description("추천 활동 목록 (2~3가지)")
-                    .build(),
-                "itemsToBring" to Schema.builder()
-                    .type("ARRAY")
-                    .items(Schema.builder().type("STRING").build())
-                    .description("챙겨갈 것 목록 (3~5가지)")
-                    .build()
-            )
-        )
-        .required(listOf("summary", "recommendedPlaces", "recommendedActivities", "itemsToBring"))
-        .build()
+    private val functionDeclarations: JSONArray = JSONArray().put(getWeatherDecl).put(searchPlaceDecl)
 
-    private val genConfig: GenerateContentConfig = GenerateContentConfig.builder()
-        .tools(
-            listOf(
-                Tool.builder()
-                    .functionDeclarations(listOf(getWeatherDecl, searchPlaceDecl))
-                    .build()
-            )
-        )
-        .responseMimeType("application/json")
-        .responseSchema(responseSchema)
-        .build()
+    private val responseSchema: JSONObject = GeminiWire.schema(
+        type = "OBJECT",
+        properties = mapOf(
+            "summary" to GeminiWire.schema("STRING", "모임 전체 요약 (날씨·장소·분위기 포함)"),
+            "recommendedPlaces" to GeminiWire.schema(
+                "ARRAY", "추천 장소 목록 (2~3곳)", items = GeminiWire.schema("STRING")
+            ),
+            "recommendedActivities" to GeminiWire.schema(
+                "ARRAY", "추천 활동 목록 (2~3가지)", items = GeminiWire.schema("STRING")
+            ),
+            "itemsToBring" to GeminiWire.schema(
+                "ARRAY", "챙겨갈 것 목록 (3~5가지)", items = GeminiWire.schema("STRING")
+            ),
+        ),
+        required = listOf("summary", "recommendedPlaces", "recommendedActivities", "itemsToBring"),
+    )
 
     // ── 내부 전송 결과 래퍼 ──────────────────────────────────────────────────
     private data class GeminiCallResult(
@@ -320,70 +272,56 @@ class AgentOrchestrator(
         roomId: String,
         eventTracker: AgentEventTracker?
     ): GeminiCallResult {
-        if (apiKey.isBlank() || apiKey.startsWith("여기에")) {
-            Log.w(TAG, "GEMINI_API_KEY 미설정 → Mock 결과 반환")
-            return GeminiCallResult(buildMockSummary(roomId), "미정")
-        }
+        // 대화 히스토리는 REST contents 배열로 직접 관리.
+        // 전송은 GeminiGateway(서버 프록시) 경유 — 앱에는 API 키가 없다.
+        val history = JSONArray().put(GeminiWire.userText(prompt))
 
-        val client = Client.builder().apiKey(apiKey).build()
-
-        // 대화 히스토리 직접 관리 (chats 모듈 없음 → generateContent에 Content 리스트 전달)
-        val history = mutableListOf<Content>()
-        history.add(
-            Content.builder()
-                .role("user")
-                .parts(listOf(Part.builder().text(prompt).build()))
-                .build()
+        suspend fun generate(): JSONObject = geminiGateway.generateContent(
+            MODEL_NAME,
+            GeminiWire.request(history, functionDeclarations, responseSchema),
         )
 
-        var response = withContext(Dispatchers.IO) {
-            client.models.generateContent(MODEL_NAME, history, genConfig)
-        }
+        var response = generate()
 
         var weatherResult = "날씨 정보 없음"
         var city = "미정"
         var meetingDate = "미정"
         val collectedKakaoPlaces = mutableListOf<KakaoPlace>()
 
+        // Function Calling 왕복 — 모델이 계속 도구만 호출하며 최종 응답을 내지 않는 상황에
+        // 대비해 MAX_TOOL_ROUNDS 로 상한을 둔다(바깥 MAX_ATTEMPTS와 별개).
         var toolRounds = 0
-        while (true) {
-            if (toolRounds++ >= MAX_TOOL_ROUNDS) {
-                Log.w(TAG, "Function Calling 왕복 상한($MAX_TOOL_ROUNDS) 도달 — 루프 강제 종료")
-                break
-            }
-            @Suppress("UNCHECKED_CAST")
-            val fcList: List<FunctionCall> =
-                (response.functionCalls() as? List<FunctionCall>) ?: emptyList()
-            if (fcList.isEmpty()) break
+        var pendingCalls = GeminiWire.functionCalls(response)
+        while (pendingCalls.isNotEmpty() && toolRounds < MAX_TOOL_ROUNDS) {
+            toolRounds++
 
             // 모델 응답을 히스토리에 추가
-            response.candidates()?.orElse(null)?.firstOrNull()?.content()?.orElse(null)
-                ?.let { history.add(it) }
+            GeminiWire.modelContent(response)?.let { history.put(it) }
 
             // 1단계: 모든 함수 호출을 병렬 실행 — 스냅샷으로 공유 상태 격리
             val callResults: List<FcCallResult> = coroutineScope {
-                fcList.mapNotNull { fc ->
-                    val fcName = fc.name().orElse(null) ?: return@mapNotNull null
-                    @Suppress("UNCHECKED_CAST")
-                    val args = fc.args().orElse(null) as? Map<String, Any?> ?: emptyMap()
+                pendingCalls.map { fc ->
                     val snapCity = city
                     val snapDate = meetingDate
                     async {
-                        val (resultText, kPlaces) = dispatchFunctionCall(fcName, args, snapCity, snapDate)
-                        Log.d(TAG, "함수 실행: $fcName → ${resultText.take(80)}")
-                        FcCallResult(fcName, args, resultText, kPlaces)
+                        val (resultText, kPlaces) = dispatchFunctionCall(fc.name, fc.args, snapCity, snapDate)
+                        Log.d(TAG, "함수 실행: ${fc.name} → ${resultText.take(80)}")
+                        FcCallResult(fc.name, fc.args, resultText, kPlaces)
                     }
                 }.awaitAll()
             }
 
             // 2단계: 단일 스레드에서 순차적으로 상태 업데이트 → Race Condition 없음
-            val funcParts = mutableListOf<Part>()
             for (r in callResults) {
                 eventTracker?.onEvent(AgentEvent.ToolCalled(r.name, r.args, r.result))
                 when (r.name) {
                     "getWeather" -> {
-                        city = r.args["city"]?.toString()?.removeSurrounding("\"") ?: city
-                        meetingDate = r.args["date"]?.toString()?.removeSurrounding("\"") ?: meetingDate
+                        city = r.args["city"]?.toString()?.removeSurrounding("\"")?.ifBlank { null } ?: city
+                        // 모델이 날씨 조회 실패 후 date="미정"으로 재호출하는 경우가 있다(평가 실측). 이미 확보한
+                        // 유효한 날짜(YYYY-MM-DD)를 "미정"으로 덮어쓰지 않는다 — 마지막 호출이 아니라 유효값 우선.
+                        val d = r.args["date"]?.toString()?.removeSurrounding("\"")
+                        if (d != null && ISO_DATE.matches(d)) meetingDate = d
+                        else if (!ISO_DATE.matches(meetingDate) && !d.isNullOrBlank()) meetingDate = d
                         weatherResult = r.result
                     }
                     "searchPlace" -> {
@@ -391,31 +329,18 @@ class AgentOrchestrator(
                         collectedKakaoPlaces.addAll(r.kakaoPlaces)
                     }
                 }
-                funcParts.add(
-                    Part.builder()
-                        .functionResponse(
-                            FunctionResponse.builder()
-                                .name(r.name)
-                                .response(mapOf("result" to r.result))
-                                .build()
-                        )
-                        .build()
-                )
             }
 
             // 함수 응답을 히스토리에 추가 후 재전송
-            history.add(
-                Content.builder()
-                    .role("user")
-                    .parts(funcParts)
-                    .build()
-            )
-            response = withContext(Dispatchers.IO) {
-                client.models.generateContent(MODEL_NAME, history, genConfig)
-            }
+            history.put(GeminiWire.functionResponses(callResults.map { it.name to it.result }))
+            response = generate()
+            pendingCalls = GeminiWire.functionCalls(response)
+        }
+        if (pendingCalls.isNotEmpty()) {
+            Log.w(TAG, "Function Calling 왕복 상한($MAX_TOOL_ROUNDS) 도달 — 마지막 응답으로 진행")
         }
 
-        val jsonText = response.text()
+        val jsonText = GeminiWire.text(response)
             ?: throw IllegalStateException("Gemini 응답이 비어 있습니다")
 
         eventTracker?.onEvent(AgentEvent.JsonParsed(jsonText))
@@ -599,14 +524,4 @@ $gemmaSum
 6. 참가자 프로필의 선호/불호와 일정 제약을 엄격히 반영하세요.
 """.trimIndent()
     }
-
-    private fun buildMockSummary(roomId: String) = MeetingSummary(
-        roomId = roomId,
-        summary = "[Mock] GEMINI_API_KEY 미설정 — local.properties에 키를 추가하세요",
-        location = "미정",
-        meetingDate = "미정",
-        recommendation = "[Mock] API 키를 설정하면 Gemini Function Calling 기반 실제 추천이 제공됩니다.",
-        weather = "날씨 정보 없음",
-        directions = ""
-    )
 }

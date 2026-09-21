@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.service.GeminiWireTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-13T04:52:12.360Z" hostname="DESKTOP-D17BMK3" time="0.003">
+  <properties/>
+  <testcase name="schema_omitsUnsetFields" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.001"/>
+  <testcase name="modelContent_roundTripsIntoHistory" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.0"/>
+  <testcase name="functionCalls_emptyWhenTextOnly_andTextJoinsParts" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.0"/>
+  <testcase name="toMap_convertsNullSentinel" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.0"/>
+  <testcase name="functionCalls_skipsMalformedEntries" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.001"/>
+  <testcase name="text_nullWhenNoCandidates_orBlank" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.0"/>
+  <testcase name="functionResponses_wrapsEachResultUnderUserRole" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.0"/>
+  <testcase name="request_hasRestShape_contentsToolsGenerationConfig" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.0"/>
+  <testcase name="functionCalls_extractsNameAndArgs_fromCandidateParts" classname="com.navoodi.morimi.service.GeminiWireTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

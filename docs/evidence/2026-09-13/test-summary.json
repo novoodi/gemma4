@@ -1,0 +1,175 @@
+{
+  "AuditDate": "2026-09-13",
+  "CapturedAtUtc": "2026-09-13T04:52:44.6941235Z",
+  "GitHead": "359a20e8922472d4cc808e5b4dcf89b4cb305dbf",
+  "WorkingTreeIsDirty": true,
+  "Command": "./gradlew.bat --gradle-user-home C:/Users/herme/.gradle :app:testDebugUnitTest --rerun --offline --console=plain",
+  "ExitCode": 0,
+  "Tests": 62.0,
+  "Failures": 0.0,
+  "Errors": 0.0,
+  "Skipped": 0.0,
+  "ProjectSpecificTests": 61.0,
+  "InstrumentationSourceTestCount": 9,
+  "ConnectedDeviceCount": 0,
+  "Suites": [
+    {
+      "Class": "com.navoodi.morimi.data.local.MeetingSummaryJsonTest",
+      "Tests": 7,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.139Z",
+      "TestSeconds": 0.044,
+      "Cases": [
+        "없는 필드는 기본값으로 - 구버전 스키마 호환",
+        "깨진 JSON은 크래시 없이 null",
+        "왕복 직렬화 - 기본값 요약도 보존",
+        "roomId 없는 JSON은 null",
+        "왕복 직렬화 - 모든 필드 보존",
+        "이름 없는 장소는 스킵",
+        "모르는 verification 값은 UNVERIFIED로 폴백"
+      ],
+      "Sha256": "B3097A72FE3929BD17E9612BC94D15EDBAB18F05F5718ED68EE43CE0AD7E300E"
+    },
+    {
+      "Class": "com.navoodi.morimi.data.pipeline.RetrieverUnitTest",
+      "Tests": 8,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.211Z",
+      "TestSeconds": 0.082,
+      "Cases": [
+        "동일 벡터 코사인 1",
+        "직교 벡터 코사인 0",
+        "jaccard 교집합-합집합 비율",
+        "tokenize는 2글자 이상 토큰만 소문자로 추출",
+        "전체 후기에서 키워드 관련성 순으로 top-k (방 무관)",
+        "쿼리 토큰이 없으면 최근순 폴백",
+        "반대 방향 코사인 -1",
+        "크기 다르거나 0벡터면 0 반환"
+      ],
+      "Sha256": "CC78A894AE0FB559A4FA928E843EA06676020746461044AC379C56149A306869"
+    },
+    {
+      "Class": "com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest",
+      "Tests": 7,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.355Z",
+      "TestSeconds": 0.004,
+      "Cases": [
+        "병합 시 공백 항목은 제거한다",
+        "직전 상태와 새 상태를 합집합으로 병합하고 중복을 제거한다",
+        "설명 텍스트와 마크다운이 섞여도 JSON 블록만 추출한다",
+        "trailing comma가 있어도 파싱한다",
+        "JSON이 없으면 null을 반환한다",
+        "직전 상태가 없으면 fresh를 그대로 반환한다",
+        "병합 결과가 상한을 넘으면 오래된 항목부터 폐기한다"
+      ],
+      "Sha256": "628E8E46EB3FEB4DC5D7CBB573AA15468F654DC35409785788DE8C95F3181E39"
+    },
+    {
+      "Class": "com.navoodi.morimi.ExampleUnitTest",
+      "Tests": 1,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.119Z",
+      "TestSeconds": 0.001,
+      "Cases": [
+        "addition_isCorrect"
+      ],
+      "Sha256": "3B2F1D5739A3B691967AF2C51A12A5A2E92E20D08A539E9717892A8B159B2A02"
+    },
+    {
+      "Class": "com.navoodi.morimi.service.GeminiWireTest",
+      "Tests": 9,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.360Z",
+      "TestSeconds": 0.003,
+      "Cases": [
+        "schema_omitsUnsetFields",
+        "modelContent_roundTripsIntoHistory",
+        "functionCalls_emptyWhenTextOnly_andTextJoinsParts",
+        "toMap_convertsNullSentinel",
+        "functionCalls_skipsMalformedEntries",
+        "text_nullWhenNoCandidates_orBlank",
+        "functionResponses_wrapsEachResultUnderUserRole",
+        "request_hasRestShape_contentsToolsGenerationConfig",
+        "functionCalls_extractsNameAndArgs_fromCandidateParts"
+      ],
+      "Sha256": "018C5D180D42FA7AED8E19222888BF463E8662DA9DFA8F852F4012DC12E696DE"
+    },
+    {
+      "Class": "com.navoodi.morimi.service.PiiScrubberTest",
+      "Tests": 14,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.364Z",
+      "TestSeconds": 0.014,
+      "Cases": [
+        "존칭이 붙는 흔한 비이름 단어는 마스킹하지 않는다",
+        "날짜나 일반 숫자는 전화번호로 오인하지 않는다",
+        "3자 한국어 이름의 given-name도 마스킹한다",
+        "휴대전화 번호를 형식과 무관하게 마스킹한다",
+        "이메일 주소를 마스킹한다",
+        "명단의 전체 이름을 마스킹한다",
+        "여러 종류의 PII가 섞여 있으면 모두 마스킹하고 카테고리별로 집계한다",
+        "이미 익명화된 요약은 그대로 통과시킨다",
+        "빈 문자열은 그대로 반환한다",
+        "명단에 없어도 존칭이 붙은 이름을 포착한다",
+        "풀네임과 given-name이 함께 있어도 중복없이 각각 마스킹한다",
+        "유선 지역번호도 마스킹한다",
+        "이름의 부분 문자열이 다른 단어에 포함돼도 과잉 소거하지 않는다",
+        "한 글자 이름은 과잉매칭 위험으로 대조에서 제외한다"
+      ],
+      "Sha256": "903D0203618955968661891DCBE8370EF812781B983361C01E84F824A66EBF1C"
+    },
+    {
+      "Class": "com.navoodi.morimi.service.ReflectionServiceTest",
+      "Tests": 9,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.380Z",
+      "TestSeconds": 0.017,
+      "Cases": [
+        "싫어요 제약이 장소 이유에서 감지되면 위반",
+        "좋아요 항목은 제약으로 취급하지 않음",
+        "모든 토큰이 한 항목에 모여야 위반 - 부분 일치는 통과",
+        "불호 항목 없으면 통과",
+        "여러 접두사 형태와 콜론 유무를 모두 인식",
+        "요약은 검사하지 않음 - 회피 서술로 인한 오탐 방지",
+        "활동에서 제약 위반 감지",
+        "불용어만 남는 제약은 무시",
+        "여러 불호 중 하나만 걸려도 위반이고 걸린 것만 보고"
+      ],
+      "Sha256": "E3DE41E6822400CCDCF9C06667C974F726E040C5331025838891EEA3D6F6E9D4"
+    },
+    {
+      "Class": "com.navoodi.morimi.service.StatusToolJsonTest",
+      "Tests": 7,
+      "Failures": 0,
+      "Errors": 0,
+      "Skipped": 0,
+      "TimestampUtc": "2026-09-13T04:52:12.399Z",
+      "TestSeconds": 0.001,
+      "Cases": [
+        "정상 args를 스키마 JSON으로 직렬화",
+        "누락 키는 빈 배열로 - 항상 세 키 존재",
+        "빈 args도 세 키를 가진 유효 JSON",
+        "숫자 등 비문자 원소는 toString으로 변환",
+        "배열이 아닌 값은 빈 배열로 방어",
+        "출력은 StatusCompressionPipeline이 파싱하는 블록 형태",
+        "공백·빈 문자열 원소는 제거"
+      ],
+      "Sha256": "AA590D0038F1BC95F7723A6D5C4F18EF9AE282C62C067A82CB7EB9A678FA6B5C"
+    }
+  ]
+}

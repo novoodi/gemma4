@@ -1,0 +1,68 @@
+{
+ "meta": {
+  "type": "meta",
+  "scenarioFile": "synthetic.json",
+  "conditions": [
+   "none",
+   "keyword",
+   "semantic"
+  ],
+  "offset": 0,
+  "end": 14,
+  "reps": 1,
+  "feedbacks": 40,
+  "device": "samsung SM-F966N",
+  "startedAt": "20260913_162814",
+  "finishedAt": "20260913_164144"
+ },
+ "conditions": {
+  "none": {
+   "n": 14,
+   "success": 14,
+   "attempts_mean": 1.1428571428571428,
+   "exhausted": 1,
+   "reflection_violations_attempt1": 2,
+   "reflection_violations_final": 1,
+   "guardrail_fail_attempt1": 0,
+   "guardrail_fail_final": 0,
+   "unknown_places": 0,
+   "places": 40,
+   "rag_injected": 0,
+   "date_ok": 6,
+   "date_n": 14,
+   "p50_s": 16.061
+  },
+  "keyword": {
+   "n": 14,
+   "success": 14,
+   "attempts_mean": 1,
+   "exhausted": 0,
+   "reflection_violations_attempt1": 0,
+   "reflection_violations_final": 0,
+   "guardrail_fail_attempt1": 0,
+   "guardrail_fail_final": 0,
+   "unknown_places": 0,
+   "places": 39,
+   "rag_injected": 6,
+   "date_ok": 9,
+   "date_n": 14,
+   "p50_s": 16.0015
+  },
+  "semantic": {
+   "n": 14,
+   "success": 14,
+   "attempts_mean": 1.0714285714285714,
+   "exhausted": 0,
+   "reflection_violations_attempt1": 0,
+   "reflection_violations_final": 0,
+   "guardrail_fail_attempt1": 1,
+   "guardrail_fail_final": 0,
+   "unknown_places": 0,
+   "places": 40,
+   "rag_injected": 14,
+   "date_ok": 7,
+   "date_n": 14,
+   "p50_s": 20.3095
+  }
+ }
+}

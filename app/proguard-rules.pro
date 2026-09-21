@@ -20,17 +20,10 @@
 # (Conversation$JniMessageCallbackImpl 등)를 이름으로 조회 → 전체 keep 필수.
 -keep class com.google.ai.edge.litertlm.** { *; }
 
-# ── 2) google-genai 1.56.0 ───────────────────────────────────────────────────
-# 순수 JAR(내장 규칙 없음). types 패키지가 AutoValue + Jackson 리플렉션
-# 직렬화 → 전체 keep이 안전.
--keep class com.google.genai.** { *; }
--dontwarn com.google.genai.**
-
-# Jackson (genai의 JSON 직렬화 엔진)
--keep class com.fasterxml.jackson.** { *; }
--dontwarn com.fasterxml.jackson.**
-
-# genai가 컴파일타임에 참조하지만 이 앱에서 exclude/미포함된 의존성
+# ── 2) Gemini 호출 ───────────────────────────────────────────────────────────
+# google-genai SDK 제거(2026-09-05) — Gemini는 REST JSON(service/GeminiWire)을
+# Firebase Functions callable 프록시(service/CloudProxy)로 보낸다. 앱에 API 키 없음.
+# 아래 dontwarn 은 잔존 참조 경고 억제용(런타임 미도달).
 -dontwarn com.google.protobuf.ProtocolStringList
 -dontwarn com.google.protobuf.Descriptors**
 -dontwarn com.google.protobuf.Message

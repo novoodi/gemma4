@@ -1,0 +1,346 @@
+[
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\MainActivity.kt",
+    "Hash": "EDFE764C4A0C011E2AC53FCC5B2A846DD2122AEFB23DBD83EAF844A6388D326E"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\MoimApp.kt",
+    "Hash": "1D2C7A4FFA0029C7479ACC30E1DC07E9427935F2738A7FBF90B035197A407B74"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\AppDatabase.kt",
+    "Hash": "B605F1D961B7CD2356D205594115945544BD2293D8B9ED24410A1BFF20C433E1"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\Converters.kt",
+    "Hash": "EAE7EDFAD3DEE4D6FD6EAB9709693C87F0B9830CB9C1B53EB3EE5256C94D3399"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\FeedbackDao.kt",
+    "Hash": "9A0B4B4CA849D0004B2D3B96D767F0CEACC27C0F3A5788D85CF3EEDCE2BF73E7"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\FeedbackEntity.kt",
+    "Hash": "FC9CFFF4F4EF22FDF124DBDEC72343C485CAD9223B0CF7AA96F13E3C362558E2"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\MeetingSummaryEntity.kt",
+    "Hash": "2DA24A0F9EBD3D1E4793AEFC6A089F410B6DC64B8D05866A79C152599BE27FA6"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\MeetingSummaryJson.kt",
+    "Hash": "6AF0A5536C02DC24B9001FB369F7015048C40C012A9549A73D96D37F40A1A09F"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\RecommendedRoomEntity.kt",
+    "Hash": "C71F9A33A53D656A4546F9A334963F388E28986669CA29A11D263E491E54337D"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\UserStatusDao.kt",
+    "Hash": "8953BE5678D01B2E49FADECF567FAF55D6CBBA3E9F26FA3908D0D258952782B9"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\local\\UserStatusEntity.kt",
+    "Hash": "CCA94F49249F2DEA1DBB155828F95F96478335A30D824E3409973D943B4072A1"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\model\\CalendarEvent.kt",
+    "Hash": "EC17C462F7AEF97B93BED5BADB9DB11A31F47A7A7F611C3B9C54F03F0E100C70"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\model\\ChatRoom.kt",
+    "Hash": "A04BC82F1557EA87B83568B9A8F6D217D370C99FB18BD00F751E90280B3621AC"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\model\\MeetingSummary.kt",
+    "Hash": "F06CD7F91FD471DE2806900BEF63CDAD67AA844756224CA8DC8E1E82B4363449"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\model\\Message.kt",
+    "Hash": "601E01F9ADA0A1316B7C3F4194AD1EE23844D9545F43C9C79A56C5C7E67CAA44"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\model\\Participant.kt",
+    "Hash": "54B450756FAB972B6D386D0211AFEC888F2F7C349C164570887287C731979C51"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\model\\RecommendedPlace.kt",
+    "Hash": "4DFE7C46930A11478774E5B9F845F81F98DE6F562CC4E73F3412756A0870ADB5"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\pipeline\\EmbeddingGemmaRetriever.kt",
+    "Hash": "8DA05B872B5259AB0E3092F27D4507ADD6F6A417D25CE1AC9A8C7E400169BA53"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\pipeline\\FeedbackRetriever.kt",
+    "Hash": "00CA50C88E682FB4309154E6031F4AF3844D50422B3CC0AA7738DB686959D306"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\pipeline\\GemmaOnDeviceLlm.kt",
+    "Hash": "03AC24D001C8FC69FA82E4D2830EE5ED2C0EEE2907255C7D3F93B31F9AA85B01"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\pipeline\\KeywordFallbackRetriever.kt",
+    "Hash": "9C1F7384486DCFDB01131F00840912457141FAE2B0F6DDC8B09B5CAB334A6608"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\pipeline\\MockOnDeviceLlm.kt",
+    "Hash": "08ADC01E911B461B550136980D4AF576F96F6D0EEDFE44C8307CCD610ACEA933"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\pipeline\\OnDeviceLlmPort.kt",
+    "Hash": "F66FA7F6BF97B7E4C251159D53C84A7ED314C0866B00F6BF9155C737BB4DA558"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\pipeline\\StatusCompressionPipeline.kt",
+    "Hash": "5EDF0DF390B228B5FCFC7424F4DB7395767F837F9BE267D7E410B20283B0E9A9"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\repository\\CalendarRepository.kt",
+    "Hash": "6B929B27B9673C1175806B38AAB8830B7EB78C081B47BA458ABD93DBFF046F64"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\repository\\ChatRepository.kt",
+    "Hash": "0F332A36DA9BC65662BD79E2FC350FF271C7AF378DC6FA1EE09BDC73B86CC0AE"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\repository\\FcmRepository.kt",
+    "Hash": "EC2C9663BB60A6C94A626695BBAE8823952A76BB7885FEC133021F20950622A2"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\repository\\FeedbackRepository.kt",
+    "Hash": "757820140A22A065D8C3E0A577BF4D94C3551C772FB5EEDEDD01B2EF27B729D8"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\repository\\SummaryRepository.kt",
+    "Hash": "6C5DD26AC401021BBC77833906EFEB4004C481CB58119B4FF9667B21D5450999"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\data\\repository\\UserStatusRepository.kt",
+    "Hash": "59354B57110CE705506F26F1F20EA71CD5D107FA218348221D438C64F7DB72F8"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\navigation\\Screen.kt",
+    "Hash": "B705FB661A4A29F3202F391B85A93886FE0E69AA5EC39885C82F3326F7C5138D"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\AgentOrchestrator.kt",
+    "Hash": "87D012FB9559DB2D95B7D766186946A020688467E020BBFF6165113C0E7E74CF"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\CloudProxy.kt",
+    "Hash": "5AFB8FCFFDE986F8A0DB2CED6B4FF6DF5F55ABB548DE362788BC4BC5CEA2D81A"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\EmbeddingGemmaEmbedder.kt",
+    "Hash": "9657CECB5E3C74D2BDD77719FB15B66E4C6B24359010DB272FB7A9DAAA537139"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\FcmService.kt",
+    "Hash": "B81FFD681B697B05A2569F9CD0954DCBCB90539F1C6C5D792A328B0856D84635"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\GeminiGateway.kt",
+    "Hash": "CAABC6A7911A1C583AEA6EA4E7C5A6E4BD70CB291DE564373EF22403F7218EB9"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\GeminiWire.kt",
+    "Hash": "B5C7F39CB381AB23E96264D3C7EC1E35045784536FA80E42796D896811D7F7C4"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\GuardrailService.kt",
+    "Hash": "1E260CF15F031D1100693ABCC5904A1AB540AB1ACD31AABE595924E275CDEDC0"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\KakaoLocalService.kt",
+    "Hash": "ECA100D0A6FA71170DA42F19ADB94A54C60E27004123BC9C827B19E92F3C43D3"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\LlmService.kt",
+    "Hash": "61B7C491DD37996DE8F6FA8FC3F2D59DF6178C83BB1F8DA52701035976DDA6DB"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\ModelDownloadService.kt",
+    "Hash": "95EAA70052D6A4763FD9C3B03A803091AB6CF8A401B365350D478175B8EDF8EF"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\PiiScrubber.kt",
+    "Hash": "CE223AAA35B510B421EE3FE1FE42A29580462E015ACF9A5ADE3ACE959AFF25CC"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\ReflectionService.kt",
+    "Hash": "50B1D08B6A0A7BDC54117D2F74D1A01103B5821F779961D635EDDABD331D5300"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\StatusToolJson.kt",
+    "Hash": "88F3918703C3FF0F971BD0613A380298A35EF2B40D07444CE1ED052FB9DF2168"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\service\\WeatherService.kt",
+    "Hash": "BE33C6585AC6B279C3B2D84ED97B02117056E1B43206D96D354E980869385AFE"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\components\\MoComponents.kt",
+    "Hash": "CDE053FE13B2CB9E94D820E166AEA9EA3B5AD64ADF17214DEA507299FD8D7CDD"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\components\\MoIcons.kt",
+    "Hash": "E96B0A8B8498B94B988348495E92238C089B206B6CA5F48AE7E3A7A1173ABED7"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\components\\TalkPlusComponents.kt",
+    "Hash": "8C2F7CED8A2FA15CFB79BD0A3716935316B8DEEE3AD776202CA12A8A3647F6CE"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\ailoading\\AILoadingScreen.kt",
+    "Hash": "0AB7EABD6961B790B4FFD9BD2546F8CEECAEC575C927B2155BFB6083946A049B"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\aireport\\AIReportScreen.kt",
+    "Hash": "F5008034725C69514AC6FAC2D5D8C0CDC95B63488A2706CA7A9A0214EE61E915"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\calendar\\CalendarScreen.kt",
+    "Hash": "CB913C221EE952BDDE9C8E18F28F250C454DF30B35E1C935CA12404B96F1CB6D"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\chat\\ChatScreen.kt",
+    "Hash": "7FD2B279750D7EB82E7CA6693DA91482535DF53CDB2DA21263038764594C2D87"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\chat\\ChatViewModel.kt",
+    "Hash": "369E60F751CB40AC65055F0B8E5E6C35436BAF455EFAFD4062A276450C201C1E"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\chatlist\\ChatListScreen.kt",
+    "Hash": "BEEA1FC3B34613FF383BF97970858E1BD3835100DDFA987D1F6C24CFE8D4252B"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\home\\HomeScreen.kt",
+    "Hash": "5DC426876C0E8F36A528488F10E03E5A77CE2F1F7F276F6EDC25DFC48FA7F15A"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\home\\HomeViewModel.kt",
+    "Hash": "D3DE78902607361560C3DB806ADA4BFD2196325BBACE92D21ACC4CE94697644C"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\joinroom\\JoinRoomScreen.kt",
+    "Hash": "5E6F85DE90BCF2CCF319737F5F1103D51D2E0D5DCAD931A756253738EEF08BCD"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\login\\AuthViewModel.kt",
+    "Hash": "19CAEB58E839E2DA220DF53CC4D36B8048CBA552C0E8BF76387A6D9BFCA18746"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\login\\LoginScreen.kt",
+    "Hash": "EEF23471C2F26A92C7C0A6C8A89230D0FE9EE67001C1D2324817552CC53416AF"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\modeldownload\\ModelDownloadScreen.kt",
+    "Hash": "23325887A1CA0D4871BA8E5AAD3F11D9F8F5ACF8F52FB5AA0D5DFF76333EA3E7"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\modeldownload\\ModelDownloadUiState.kt",
+    "Hash": "660600B62C99B887D8CE49F54A8B2C871397899CE7F7D3A90C99FD4236AF1311"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\modeldownload\\ModelDownloadViewModel.kt",
+    "Hash": "8C4054C2EE87CA3EF991275F24189E61F3284A6A09DAB40BC5544AF6068898CF"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\onboarding\\OnboardingScreen.kt",
+    "Hash": "20F2819CF1B4F9E272C0CB49BF7D97DEA55CC03D73EB850B4DFD84AF0D88AAA1"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\profile\\MyPageScreen.kt",
+    "Hash": "99B5B928ABC442BDE4C9A96E97D18F8849AB092C39B399798BC6B49BA9322493"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\profile\\ProfileEditScreen.kt",
+    "Hash": "C02D2003CB0B75512A2B8FF4E36FCCCC1829134DEC1EEC84EF239C0B7766BD5F"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\splash\\SplashScreen.kt",
+    "Hash": "2B0BC57D11D6E262508F9D027E162A3DCE3900D136CAE9724FCEFE63621AAFFB"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\summary\\SummaryScreen.kt",
+    "Hash": "5C69FD389C3C5CF28C2E76448B711F3E85B0CE6C6231EB2D8EA91E4CD54C5922"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\screen\\vote\\VotingScreen.kt",
+    "Hash": "660F3DAE12397DF73F0B77AE1DFAC47B153330E395B1FC53C387430168683A93"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\theme\\Color.kt",
+    "Hash": "27B71F5E186A512650AAC39F89C933D7C5D5881E668AEFAEF16C2286540A3DD9"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\theme\\Theme.kt",
+    "Hash": "191205F94EB964A162A0BAB2C93B3028DDA3A7FE145B7BF4D00CB2667905BDC3"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\theme\\Tokens.kt",
+    "Hash": "0823EE3F40BC8439594B8AF8EE86035E2153F6CA7A2AB3329B5ACEAEFE9B17F3"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\main\\java\\com\\navoodi\\morimi\\ui\\theme\\Type.kt",
+    "Hash": "D629680ACF15037018772F20E25DE540004767E1630F507D93707498AD573F38"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\ExampleUnitTest.kt",
+    "Hash": "B5D37B324250493A9B029F3DD14757673075BE5D50DB27247F543B0ED1EDE5E9"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\data\\local\\MeetingSummaryJsonTest.kt",
+    "Hash": "63035125844798C5577253D2A4417F9F8346955243AF7E8BA718568BBC5A0ADC"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\data\\pipeline\\RetrieverUnitTest.kt",
+    "Hash": "28A298D5338357402DCDF2234F4C2D555E939B2FA232AAAA13C49B1F3C0D4F4B"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\data\\pipeline\\StatusCompressionPipelineTest.kt",
+    "Hash": "D9F61C7C6E349B3F07438ABE42BAB70184439544C5EADF8E0FE8AD66F5F787EF"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\service\\GeminiWireTest.kt",
+    "Hash": "477FB6AE301E0E0EFD4E71AF18020AEF29B14E9227A7FC63AEFE4C9693B5A625"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\service\\PiiScrubberTest.kt",
+    "Hash": "014363E89E66ABD4C0331DDBF5267BDDDA93F091A6E88DAA1B9D750C939B934F"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\service\\ReflectionServiceTest.kt",
+    "Hash": "2E65D708FAA05D3ACF2ACABFBC6A52EDE644B791712A19ACD6CC9F737D659962"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\test\\java\\com\\navoodi\\morimi\\service\\StatusToolJsonTest.kt",
+    "Hash": "F4A51CFE3B319BE6A164C269F9C50B3B858BD3260DBF04B49A27612762ACA945"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\androidTest\\java\\com\\navoodi\\morimi\\embedding\\EmbeddingGoldenTest.kt",
+    "Hash": "C1ADA2DBCB6217E1D0ED8D5B4276DA450BA81C411474290272331B0B71021B5F"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\androidTest\\java\\com\\navoodi\\morimi\\embedding\\FeedbackRetrieverIntegrationTest.kt",
+    "Hash": "529157778A56E3988FF93B3F8216674575CD7E4B0A335036B5E7E9015AB45FDD"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\androidTest\\java\\com\\navoodi\\morimi\\embedding\\ModelDownloadServiceTest.kt",
+    "Hash": "458A5A94D8FE3F82511FC5E1B587061CD69B5945FE1B6B418A70D94D76584D8A"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\androidTest\\java\\com\\navoodi\\morimi\\embedding\\RagE2ETest.kt",
+    "Hash": "EDF6DA0BD8D793361BF4206F91B875578E7C7DC8E0BD05A05684B034AF14CDEC"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\androidTest\\java\\com\\navoodi\\morimi\\spike\\EmbeddingTokenizerSpikeTest.kt",
+    "Hash": "312C720C24314F30C0513A7CB03EA4E9A9DA0BDD475B9338EF6209F0FFECE82B"
+  },
+  {
+    "Path": "D:\\gemma4\\app\\src\\androidTest\\java\\com\\navoodi\\morimi\\spike\\RuntimeCoexistenceSpikeTest.kt",
+    "Hash": "04297E0F248C9A733EACB779E88BBD7BB5443552D3A15CA40EA6FD78B7ECB1D4"
+  }
+]

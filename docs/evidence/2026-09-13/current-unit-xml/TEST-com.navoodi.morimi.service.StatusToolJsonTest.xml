@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.service.StatusToolJsonTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-13T04:52:12.399Z" hostname="DESKTOP-D17BMK3" time="0.001">
+  <properties/>
+  <testcase name="정상 args를 스키마 JSON으로 직렬화" classname="com.navoodi.morimi.service.StatusToolJsonTest" time="0.001"/>
+  <testcase name="누락 키는 빈 배열로 - 항상 세 키 존재" classname="com.navoodi.morimi.service.StatusToolJsonTest" time="0.0"/>
+  <testcase name="빈 args도 세 키를 가진 유효 JSON" classname="com.navoodi.morimi.service.StatusToolJsonTest" time="0.0"/>
+  <testcase name="숫자 등 비문자 원소는 toString으로 변환" classname="com.navoodi.morimi.service.StatusToolJsonTest" time="0.0"/>
+  <testcase name="배열이 아닌 값은 빈 배열로 방어" classname="com.navoodi.morimi.service.StatusToolJsonTest" time="0.0"/>
+  <testcase name="출력은 StatusCompressionPipeline이 파싱하는 블록 형태" classname="com.navoodi.morimi.service.StatusToolJsonTest" time="0.0"/>
+  <testcase name="공백·빈 문자열 원소는 제거" classname="com.navoodi.morimi.service.StatusToolJsonTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.ExampleUnitTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-13T04:52:12.119Z" hostname="DESKTOP-D17BMK3" time="0.001">
+  <properties/>
+  <testcase name="addition_isCorrect" classname="com.navoodi.morimi.ExampleUnitTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

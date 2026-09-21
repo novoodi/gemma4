@@ -1,0 +1,100 @@
+{
+  "emails": {
+    "gold": 766,
+    "recall": 1,
+    "precision": 1,
+    "detected": 766,
+    "masks": 766
+  },
+  "names_all": {
+    "gold": 1570,
+    "recall": 0.5006369426751592,
+    "precision": 0.7820895522388059,
+    "detected": 786,
+    "masks": 1005
+  },
+  "residual_third_party_next_char_top": {
+    " ": 95,
+    "가": 35,
+    "!": 4,
+    "도": 17,
+    "아": 16,
+    "오": 3,
+    "네": 3,
+    "⏎": 33,
+    ".": 5,
+    "두": 5,
+    "쓰": 4,
+    "랑": 11,
+    "이": 99,
+    "는": 19,
+    "형": 3,
+    "언": 14,
+    "나": 4,
+    "한": 15,
+    "야": 13,
+    "를": 5
+  },
+  "texts_fully_clean": 2092,
+  "records": 5000,
+  "decoys": {
+    "lost_words": {
+      "원장님": 8,
+      "자매님": 2,
+      "회장님": 3,
+      "교수님": 18,
+      "팀장님": 14,
+      "블러셔아님": 1,
+      "사모님": 6,
+      "대리님": 4,
+      "과장님": 13,
+      "상무님": 5
+    },
+    "total": 356,
+    "lost": 239
+  },
+  "phones": {
+    "gold": 1499,
+    "recall": 1,
+    "precision": 1,
+    "detected": 1499,
+    "masks": 1499
+  },
+  "residual_known_name_next_char_top": {
+    " ": 4,
+    "선": 3,
+    "찡": 2,
+    "아": 77,
+    "오": 6,
+    "쌤": 5,
+    "스": 3,
+    "얌": 3,
+    "사": 3,
+    "⏎": 5,
+    "쓰": 3,
+    "집": 5,
+    "이": 5,
+    "는": 4,
+    "형": 7,
+    "언": 13,
+    "인": 6,
+    "야": 54,
+    "라": 3,
+    "꺼": 3
+  },
+  "texts_with_pii": 2611,
+  "names_known_participants": {
+    "gold": 1069,
+    "recall": 0.7165575304022451,
+    "precision": null,
+    "detected": 766,
+    "masks": 0
+  },
+  "names_third_party": {
+    "gold": 501,
+    "recall": 0.03992015968063872,
+    "precision": null,
+    "detected": 20,
+    "masks": 0
+  }
+}

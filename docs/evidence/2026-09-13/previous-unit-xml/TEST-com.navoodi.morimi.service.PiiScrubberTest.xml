@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.service.PiiScrubberTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-09-05T04:30:29.236Z" hostname="DESKTOP-D17BMK3" time="0.005">
+  <properties/>
+  <testcase name="존칭이 붙는 흔한 비이름 단어는 마스킹하지 않는다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.002"/>
+  <testcase name="날짜나 일반 숫자는 전화번호로 오인하지 않는다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="3자 한국어 이름의 given-name도 마스킹한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.002"/>
+  <testcase name="휴대전화 번호를 형식과 무관하게 마스킹한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="이메일 주소를 마스킹한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="명단의 전체 이름을 마스킹한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="여러 종류의 PII가 섞여 있으면 모두 마스킹하고 카테고리별로 집계한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="이미 익명화된 요약은 그대로 통과시킨다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.001"/>
+  <testcase name="빈 문자열은 그대로 반환한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="명단에 없어도 존칭이 붙은 이름을 포착한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="풀네임과 given-name이 함께 있어도 중복없이 각각 마스킹한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="유선 지역번호도 마스킹한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="이름의 부분 문자열이 다른 단어에 포함돼도 과잉 소거하지 않는다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <testcase name="한 글자 이름은 과잉매칭 위험으로 대조에서 제외한다" classname="com.navoodi.morimi.service.PiiScrubberTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

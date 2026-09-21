@@ -243,11 +243,15 @@ app/
 │   ├── EmbeddingGemmaEmbedder.kt # EmbeddingGemma 임베더 (raw LiteRT + DJL 토크나이저)
 │   ├── PiiScrubber.kt            # 클라우드 전송 직전 결정론적 PII 마스킹 게이트 (순수 Kotlin)
 │   ├── AgentOrchestrator.kt      # 프라이버시 방화벽 + Gemini Function Calling + 하네스 루프
+│   ├── CloudProxy.kt             # 외부 API 프록시 게이트 (Functions callable) — 앱에 API 키 없음
+│   ├── GeminiGateway.kt          # Gemini 호출 포트 + Cloud 프록시 구현
+│   ├── GeminiWire.kt             # Gemini generateContent REST JSON 조립·해석 (순수 Kotlin)
+│   ├── KakaoLocalService.kt      # 카카오 로컬 검색·장소 실존 확인 (프록시 경유)
 │   ├── GuardrailService.kt       # 장소 영업 여부 팩트 체크 + 피드백 생성 (하드 게이트)
 │   ├── ReflectionService.kt      # 추천의 사용자 제약(싫어요) 위반 자기비평 (소프트 게이트, 순수 Kotlin)
 │   ├── FcmService.kt             # FCM 토큰 갱신 및 포그라운드 푸시 알림 표시
 │   ├── ModelDownloadService.kt   # HF에서 모델 다운로드 (Foreground Service, Range 이어받기)
-│   └── WeatherService.kt         # 기상청 단기예보 API 연동
+│   └── WeatherService.kt         # 기상청 중기예보 (프록시 경유)
 │
 └── ui/
     ├── screen/
@@ -349,7 +353,7 @@ app/
 | 네비게이션 | Navigation Compose 2.8 |
 | 온디바이스 LLM | Google AI Edge LiteRTLM 0.11 (Gemma 4 — 요약·성향 압축) |
 | 온디바이스 임베딩 | EmbeddingGemma-300m via LiteRT 1.4 + DJL 토크나이저 (후기 RAG) |
-| 클라우드 LLM | Google GenAI SDK 1.56.0 (Gemini) |
+| 클라우드 LLM | Gemini REST (generateContent) — Firebase Functions callable 프록시 경유, 앱에 API 키 없음 |
 | 로컬 DB | Room 2.6.1 (KSP 2.2.21-2.0.4) |
 | 클라우드 DB | Firebase Firestore (방·메시지 실시간 구독) |
 | 인증 | Firebase Auth (Google 소셜 로그인) |
@@ -380,20 +384,26 @@ Firebase Console에서 `google-services.json`을 다운로드하여 `app/` 디�
 
 > 모델 파일이 없으면 Mock 구현(`MockOnDeviceLlm`)이 자동으로 사용됩니다.
 
-### 3. API 키 설정
+### 3. API 키 설정 (서버 측)
 
-`local.properties`에 다음 키를 추가합니다:
+외부 API 키(Gemini·카카오 로컬·기상청)는 **APK에 포함되지 않습니다.**
+키는 Firebase Functions 시크릿(Secret Manager)에만 존재하고, 앱은 로그인 사용자만 호출할 수 있는
+callable 프록시(`functions/index.js`의 `geminiGenerate` / `kakaoSearch` / `weatherMidFcst`)를 통해
+외부 API에 접근합니다. 앱 쪽 코드는 `service/CloudProxy.kt` 하나가 이 경계를 담당합니다.
 
-```properties
-# 기상청 단기예보 (https://www.data.go.kr)
-WEATHER_API_KEY=발급받은_기상청_API_키
+```bash
+# 최초 1회 — 시크릿 등록 (값은 프롬프트에 입력)
+firebase functions:secrets:set GEMINI_API_KEY      # https://aistudio.google.com/app/apikey
+firebase functions:secrets:set KAKAO_REST_API_KEY  # https://developers.kakao.com
+firebase functions:secrets:set WEATHER_API_KEY     # https://www.data.go.kr (중기예보)
 
-# Google Gemini API (https://aistudio.google.com/app/apikey)
-GEMINI_API_KEY=발급받은_Gemini_API_키
+# 프록시 배포
+firebase deploy --only functions
 ```
 
-> `local.properties`는 `.gitignore`에 포함되어 있어 Git에 업로드되지 않습니다.
-> Gemini API 키 없이도 앱은 실행되며, Mock 추천 텍스트가 표시됩니다.
+> 프록시는 Firebase Auth 로그인 사용자만 호출할 수 있고, Gemini 모델명은 서버 allowlist로 고정됩니다.
+> 프록시가 배포되지 않았거나 로그인하지 않은 상태에서는 추천·날씨·장소 검색이 실패로 처리됩니다
+> (온디바이스 요약·성향 압축은 영향 없음).
 
 ### 4. 빌드 및 실행
 
@@ -444,7 +454,7 @@ GEMINI_API_KEY=발급받은_Gemini_API_키
 - [x] **Reflection 패스** — 추천이 명시 제약(싫어요)을 위반하지 않는지 자기비평 (소프트 게이트)
 - [x] **임베딩 실패 후기 앱 시작 시 일괄 재인덱싱**
 - [x] **온디바이스 constrained decoding** — 성향 압축을 툴 스키마 제약 디코딩으로 교체(깨진 JSON 구조적 차단)
-- [ ] Gemini 호출 Cloud Function 프록시화 (API 키 서버 이전)
+- [x] **외부 API 키 서버 격리** — Gemini·카카오·기상청 호출을 Cloud Functions callable 프록시로 이전 (APK에 키 없음, 로그인 사용자만 호출)
 - [x] 초대코드 기반 방 참여
 - [x] 안읽음 메시지 뱃지
 - [ ] 날씨 예보 범위 확장 (중기예보 API)

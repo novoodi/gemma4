@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.service.ReflectionServiceTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-09-13T04:52:12.380Z" hostname="DESKTOP-D17BMK3" time="0.017">
+  <properties/>
+  <testcase name="싫어요 제약이 장소 이유에서 감지되면 위반" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.016"/>
+  <testcase name="좋아요 항목은 제약으로 취급하지 않음" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.0"/>
+  <testcase name="모든 토큰이 한 항목에 모여야 위반 - 부분 일치는 통과" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.0"/>
+  <testcase name="불호 항목 없으면 통과" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.0"/>
+  <testcase name="여러 접두사 형태와 콜론 유무를 모두 인식" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.001"/>
+  <testcase name="요약은 검사하지 않음 - 회피 서술로 인한 오탐 방지" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.0"/>
+  <testcase name="활동에서 제약 위반 감지" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.0"/>
+  <testcase name="불용어만 남는 제약은 무시" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.0"/>
+  <testcase name="여러 불호 중 하나만 걸려도 위반이고 걸린 것만 보고" classname="com.navoodi.morimi.service.ReflectionServiceTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

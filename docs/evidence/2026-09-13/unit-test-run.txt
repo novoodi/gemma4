@@ -1,0 +1,53 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+
+> Configure project :app
+w: file:///D:/gemma4/app/build.gradle.kts:43:9: 'jvmTarget: String' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
+We noticed you are using KSP1 which is deprecated and support for it will be removed soon - please migrate to KSP2 as soon as possible. KSP1 will no longer be compatible with Android Gradle Plugin 9.0.0 (and above) and Kotlin 2.3.0 (and above)
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:copyLibcxxShared
+> Task :app:preBuild
+> Task :app:preDebugBuild
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :app:processDebugGoogleServices UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+
+> Task :app:processDebugMainManifest
+[com.google.ai.edge.litert:litert-support:1.4.0] C:\Users\herme\.gradle\caches\8.13\transforms\78684e583329d1d9eef1bdd16257c9d9\transformed\litert-support-1.4.0\AndroidManifest.xml Warning:
+	Namespace 'org.tensorflow.lite.support' is used in multiple modules and/or libraries: com.google.ai.edge.litert:litert-support:1.4.0, com.google.ai.edge.litert:litert-support-api:1.4.0. Please ensure that all modules and libraries have a unique namespace. For more information, See https://developer.android.com/studio/build/configure-app-module#set-namespace
+
+> Task :app:processDebugManifest
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:preDebugUnitTestBuild
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:kspDebugKotlin
+
+> Task :app:compileDebugKotlin
+w: file:///D:/gemma4/app/src/main/java/com/navoodi/morimi/data/repository/FcmRepository.kt:33:57 'val token: Task<String!>' is deprecated. Deprecated in Java.
+w: file:///D:/gemma4/app/src/main/java/com/navoodi/morimi/data/repository/FcmRepository.kt:51:57 'val token: Task<String!>' is deprecated. Deprecated in Java.
+w: file:///D:/gemma4/app/src/main/java/com/navoodi/morimi/service/FcmService.kt:79:15 'fun onNewToken(p0: String): Unit' is deprecated. Deprecated in Java.
+w: file:///D:/gemma4/app/src/main/java/com/navoodi/morimi/ui/screen/chat/ChatScreen.kt:103:28 'val LocalClipboardManager: ProvidableCompositionLocal<ClipboardManager>' is deprecated. Use LocalClipboard instead which supports suspend functions.
+w: file:///D:/gemma4/app/src/main/java/com/navoodi/morimi/ui/screen/chatlist/ChatListScreen.kt:114:37 'val Icons.Outlined.Login: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Outlined.Login.
+
+> Task :app:compileDebugJavaWithJavac
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:kspDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:testDebugUnitTest
+
+BUILD SUCCESSFUL in 1m 5s
+28 actionable tasks: 9 executed, 19 up-to-date

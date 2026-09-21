@@ -1,0 +1,69 @@
+{
+ "meta": {
+  "type": "meta",
+  "feedbacks": 40,
+  "queries": 200,
+  "indexMs": 44160,
+  "topK": 3,
+  "device": "samsung SM-F966N",
+  "finished": true
+ },
+ "stats": {
+  "keyword": {
+   "lexical": {
+    "n": 80,
+    "top1": 60,
+    "top3": 65,
+    "rr": 62.5
+   },
+   "paraphrase": {
+    "n": 80,
+    "top1": 2,
+    "top3": 4,
+    "rr": 3.0
+   },
+   "intent": {
+    "n": 40,
+    "top1": 5,
+    "top3": 7,
+    "rr": 5.833333333333333
+   },
+   "all": {
+    "n": 200,
+    "top1": 67,
+    "top3": 76,
+    "rr": 71.33333333333334
+   }
+  },
+  "semantic": {
+   "lexical": {
+    "n": 80,
+    "top1": 80,
+    "top3": 80,
+    "rr": 80.0
+   },
+   "paraphrase": {
+    "n": 80,
+    "top1": 64,
+    "top3": 75,
+    "rr": 69.0
+   },
+   "intent": {
+    "n": 40,
+    "top1": 22,
+    "top3": 35,
+    "rr": 27.999999999999996
+   },
+   "all": {
+    "n": 200,
+    "top1": 166,
+    "top3": 190,
+    "rr": 177.0
+   }
+  }
+ },
+ "latency_p50": {
+  "keyword": 2.0,
+  "semantic": 3129.5
+ }
+}

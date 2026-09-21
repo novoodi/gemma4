@@ -26,6 +26,10 @@ class LlmService(private val context: Context) {
     private var engine: Engine? = null
     private val engineMutex = Mutex()
 
+    /** 직전 압축이 어느 경로로 끝났는지 — "constrained" | "freetext" | null(미실행). 관찰용(평가 하네스·로그). */
+    @Volatile var lastCompressionPath: String? = null
+        private set
+
     val modelPath: String
         get() = "${context.getExternalFilesDir("models")?.absolutePath}/$MODEL_FILENAME"
 
@@ -76,9 +80,11 @@ class LlmService(private val context: Context) {
                 .getOrNull()
                 ?.let {
                     Log.d("LlmService", "압축(constrained) 결과: $it")
+                    lastCompressionPath = "constrained"
                     return@withContext it
                 }
 
+            lastCompressionPath = "freetext"
             compressViaFreeText(eng, transcript)
         }
     }

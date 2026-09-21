@@ -53,6 +53,7 @@ class RetrieverUnitTest {
         override suspend fun updateEmbedding(id: Long, embedding: ByteArray?) {}
         override suspend fun getByRoom(roomId: String) = items.filter { it.roomId == roomId }
         override suspend fun getAll() = items.toList()
+        override suspend fun getMissingEmbeddings() = items.filter { it.embedding == null }
         override suspend fun deleteByRoom(roomId: String) {}
         override suspend fun clear() {}
     }

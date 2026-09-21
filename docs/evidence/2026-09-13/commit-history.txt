@@ -1,0 +1,30 @@
+359a20e 2026-07-14 docs: README 채용 관점 보강 — 기술 하이라이트·지표·엔지니어링 규율
+40965cc 2026-07-14 refactor: 데드코드 제거 — GeminiService · LlmService.runPipeline
+f1ca6d8 2026-07-14 docs: README 최신화 — 온디바이스 constrained decoding 반영
+85ce12f 2026-07-14 feat(pipeline): 성향 압축을 온디바이스 constrained decoding으로 교체 (B②)
+e7e8cef 2026-07-14 docs: README 최신화 — Reflection 자기비평·추천 영속·재인덱싱 반영
+5c8c474 2026-07-14 feat(reflection): 제약 준수 자기비평 패스 — 싫어요 위반 검출·자가수정 (B④)
+28890da 2026-07-14 fix(nav): 탭 이동 시 스택 루트 리셋 — AIReport 되살아남 버그 제거
+26ce63d 2026-07-14 feat(summary): 추천 결과 Room 영속 + "지난 추천 보기" 진입점
+0fa34da 2026-07-14 fix(rag): 임베딩 누락 후기 재인덱싱 — 앱 시작·모델 다운로드 시 일괄 복구
+fed5772 2026-07-12 docs: README 최신화 — 온디바이스 시맨틱 RAG·PII 스크러버 반영
+92c11be 2026-07-12 fix(rag): 후기 진입점(재진입 팝업)·개인 취향 누적·임베딩 취소 수정
+3381d88 2026-07-12 test(rag): RAG E2E 실기기 검증 — 회수→프롬프트 주입→추천→폴백
+79a1759 2026-07-12 feat(download): 임베딩 모델 다운로드 배선 — 다중 파일 일반화
+114a1a6 2026-07-12 feat(rag): EmbeddingGemma 온디바이스 시맨틱 RAG — 후기 덤프 → 의미 검색
+83e56c2 2026-07-12 build(rag-spike): EmbeddingGemma 통합 토대 + CLAUDE.md/DEVLOG 신설
+63915cc 2026-07-12 feat(pipeline): 증분 압축 병합 [A] + Function Calling 루프 상한 [F]
+1f5e69c 2026-07-12 feat(privacy): 온디바이스 PII 스크러버 — 프라이버시 방화벽 결정론적 게이트
+5b2673d 2026-07-12 chore(hygiene): firebase-debug.log 추적 해제 + functions/.gitignore 로그 패턴 추가
+3b1cb57 2026-07-12 feat(security): Firestore 보안 규칙 신설 + firebase.json 연결
+9d726b0 2026-07-12 build(release): R8 난독화·리소스 축소 활성화 + ProGuard keep 규칙
+42a9f59 2026-07-12 refactor(demo): 실명 목데이터 앱에서 완전 제거 — admin 시드 스크립트로 이전
+d12fb66 2026-07-12 fix(guardrail): 장소 검증 fail-open 제거 — 검증 불가(UNKNOWN) 3-상태 분리
+ba9b807 2026-07-06 feat(ui): 전 화면 StoryMind 디자인 마이그레이션
+5fe3e07 2026-07-06 feat(ui): 공유 컴포넌트 라이브러리 신설
+7d23917 2026-07-06 feat(ui): StoryMind(Toss) 디자인 파운데이션 — 토큰 + Pretendard
+ca32315 2026-07-06 fix: 사용자 영향 치명적 버그 8건 수정
+c0d366b 2026-07-06 chore: gitignore에 온디바이스 모델 캐시·디자인 번들 제외 추가
+966ce3c 2026-06-26 fix: 하단 탭 네비게이션 버그 수정 + AIReport 캘린더 이동 개선
+ee41715 2026-06-26 feat: AIReportScreen 카드뉴스 재구성 + 장소 담기 + 캘린더 연동
+6774e16 2026-06-24 docs: README 전면 업데이트 — Firebase 백엔드 및 신규 기능 반영

@@ -388,3 +388,121 @@ StatusCompressionPipeline 7(동일 JSON 형태 파싱) 통과.
 
 **남은 리스크**: ExperimentalFlags 전역 상태 → 향후 병렬 대화 도입 시 재검토(현재는 engineMutex
 직렬화로 무해). 실험적 API라 litertlm 업그레이드 시 시그니처 변화 가능(0.13.1 동일 확인).
+
+## 2026-09-05 — 외부 API 키 서버 격리: Cloud Functions callable 프록시 채택
+
+**배경**: 출시(Play Store 내부 테스트) 준비 점검에서 Gemini·카카오 로컬·기상청 키가
+`local.properties → BuildConfig` 경로로 APK에 그대로 박히는 것을 확인. 디컴파일로 즉시 유출되는
+구조라 출시 차단 요소 1순위로 판정.
+
+**결정**: 세 키를 Firebase Functions 시크릿(Secret Manager)으로 옮기고, 앱은 로그인 사용자만
+호출 가능한 callable 프록시 3개(`geminiGenerate` / `kakaoSearch` / `weatherMidFcst`,
+asia-northeast3)를 통해서만 외부 API에 닿는다. 프롬프트 조립·Function Calling 루프·Guardrail은
+온디바이스 오케스트레이터에 그대로 남긴다(프록시는 "키 붙여 전달"만).
+
+**근거**:
+- 이미 2세대 Functions(`notifyNewMessage`)가 같은 프로젝트에 배포돼 있어 인프라·과금 플랜 추가 없음.
+- 세 키를 한 가지 메커니즘으로 통일 — 인증 강제(`request.auth`), 입력 검증, Gemini 모델
+  allowlist, 본문 크기 상한, 업스트림 타임아웃을 서버 한 곳에서 집행.
+- 부수 효과: google-genai Java SDK 제거 → 그 때문에 넣어둔 protobuf-java exclude·gRPC 1.70 강제
+  통일 블록(build.gradle.kts)과 genai/Jackson keep 규칙(proguard) 제거. Gemini는 REST JSON을
+  직접 조립(`GeminiWire`, 순수 Kotlin)하므로 와이어 포맷이 JVM 단위 테스트 대상이 됨.
+
+**기각한 대안**:
+- Firebase AI Logic SDK: Gemini만 해결되고 카카오·기상청은 어차피 프록시가 필요 → 메커니즘 이원화.
+  App Check 없이는 남용 통제도 약함.
+- API 키 앱 제한(패키지명+SHA-1): Gemini 키만 가능, 카카오 REST·data.go.kr 키는 제한 수단 없음.
+- 오케스트레이터 전체 서버 이전: "온디바이스 하네스"라는 아키텍처 정체성 훼손, 규모 과대.
+
+**구현**: `service/CloudProxy`(callable 게이트) · `GeminiGateway`(포트) + `CloudGeminiGateway` ·
+`GeminiWire`(REST 조립/해석) · `KakaoLocalService`/`WeatherService` 프록시 경유로 교체 ·
+`AgentOrchestrator` 생성자 `apiKey` → `geminiGateway` 포트 주입(Mock 경로 제거) ·
+Function Calling 루프의 `while(true)`를 `MAX_TOOL_ROUNDS` 조건 루프로 정리(컨벤션 7).
+`functions/index.js`에 프록시 3종 추가(`defineSecret`, `onCall`).
+
+**검증(2026-09-05)**:
+- JVM 단위 테스트 62건 통과(신규 `GeminiWireTest` 9건 포함). 기존 `RetrieverUnitTest`의 가짜 DAO가
+  `getMissingEmbeddings` 미구현으로 컴파일 실패하던 잠복 결함도 함께 수정.
+- `assembleDebug`·`assembleRelease`(R8 minify) 모두 성공 — genai 제거 후 난독화 규칙 이상 없음.
+- 디버그 APK 바이트 스캔: 세 키 문자열(UTF-8/UTF-16) 0건.
+- 시크릿 3종 등록 완료(`projects/836813878467/secrets/*/versions/1`).
+- 사용자가 `firebase deploy --only functions` 실행(Windows PowerShell에서 검사 단계 10s 타임아웃 →
+  `FUNCTIONS_DISCOVERY_TIMEOUT=60` 으로 해결). 함수 4종 asia-northeast3 배포 확인.
+- 실기기 스모크(2026-09-05): 인증 VALID로 프록시 통과 확인. 단, Gemini가 3회 연속
+  503("high demand", 일시 혼잡)을 반환해 추천 실패 — 오케스트레이터가 대기 없이 재시도해 혼잡 구간을
+  그대로 맞음. **프록시에 지수 백오프 재시도 추가**(Gemini 429/500/503 → 1s/2s/4s 최대 3회,
+  카카오·기상청 1회). 재배포 후 재검증 필요.
+
+**남은 리스크**:
+- 남용 통제는 "로그인 사용자" 수준. 출시 전 Firebase App Check(Play Integrity) 적용과
+  사용자별 호출 상한(Firestore 카운터 또는 Functions 레이트리밋) 검토 필요.
+- 프록시는 Gemini 응답을 그대로 중계 — 서버 로그에 요약문이 남지 않도록 로깅 최소화 유지
+  (현재 오류 시 업스트림 본문 300자만 로그).
+- 로컬 Node 22 vs Functions 런타임 Node 24 — 에뮬레이터 실행 시 경고 가능(배포는 무관).
+
+## 2026-09-13 — 평가 체계 수립: AI Hub 대화 데이터 기반 정량 평가 착수
+
+**배경**: 단위 테스트 62건은 로직 통과 증거일 뿐 "요약이 핵심 정보를 보존하는가, PII를 막는가,
+추천이 제약을 지키는가"의 수치가 없었다(docs/evidence/2026-09-13/REVIEW.md). 캡스톤 발표용 정량
+평가를 위해 AI Hub 한국어 대화 요약(Validation, 35,004건)을 평가 원천으로 채택.
+
+**결정**:
+- 평가 표본은 "정답을 사람이 달아야 하는가"로 이원화. 정답 불필요 지표(PII 누출·형식·지연·
+  스크러버 정밀도)는 수백~수천 건 자동 채점, 정답 필요 지표(슬롯 추출·추천 위반)는 100건 내외
+  사람 검증. 상세: `docs/eval/TEST_PLAN_REVIEW.md`.
+- 데이터가 이미 익명화(`#@이름#` 등)돼 있어 PII 평가는 **합성값 주입** 방식으로 측정. 주입값이 정답.
+- 원문 산출물은 `.eval-local/`(gitignore)에만 두고 저장소에는 ID·집계·스크립트만 둔다(AI Hub 재배포 금지).
+  외부 LLM으로 정답 초안을 만드는 방식은 약관 리스크로 기각.
+- Reflection·Guardrail 유무 비교는 코드 변경 없이 "1회차 결과 vs 최종 결과"로 정의(1회차 프롬프트 =
+  검증 피드백 없는 기본 프롬프트).
+- 관찰용 필드 `LlmService.lastCompressionPath` 추가(constrained/freetext 경로 식별).
+
+**구현**: `scripts/eval/build_evalset.py`(후보 120·대량 315·스크러버 5,000 생성),
+`PiiScrubberBulkEvalTest`(JVM), `OnDeviceEvalRunner`(androidTest, JSONL 기록·판정 없음),
+`scripts/eval/score_ondevice.py`.
+
+**첫 실측(스크러버 5,000건)**: 전화·이메일 100% 탐지. 이름은 명단 내 71.7%, 명단 외 4.0%.
+미탐 주원인 호격 조사(아/야, 조사 목록에 없음), 오탐 주원인 직함 호칭(교수님·팀장님 등 67% 소실).
+결과 누적: `docs/eval/RESULTS.md`. 스크러버 규칙 수정은 온디바이스(요약문 기준) 수치 확인 후 결정.
+
+**남은 작업**: 후보 120건 중 30건 선별·정답 작성(사람), 합성 대화 70건, 후기 코퍼스 40건 + 검색
+평가, 추천 시나리오 30건 실행기.
+
+## 2026-09-13 — 평가 중 발견: 날씨 프록시가 모든 구역코드를 거부 (fix 대기 배포)
+
+**발견 경위**: 추천 평가 실행기(`RecommendationEvalRunner`)의 AgentEvent 로그에서 `getWeather` 호출이
+전부 `[weatherMidFcst] INVALID_ARGUMENT: regId/tmFc 형식 오류`로 실패. 9월 5일 프록시 전환 이후
+실기기 스모크가 Gemini 503으로 막혀 날씨 경로가 검증되지 않은 채 남아 있었다.
+
+**원인**: `functions/index.js`의 `weatherMidFcst` 입력 검증이 `regId`를 `^\d{8}$`(숫자 8자리)로
+제한했으나, 기상청 중기예보 구역코드는 `11B00000`·`11H20201`처럼 영문 대문자를 포함한다.
+앱(`WeatherService`)이 보내는 모든 코드가 거부됐다.
+
+**수정**: 정규식을 `^[0-9A-Z]{8}$`로 변경(코드 반영 완료). `firebase deploy --only functions` 재배포 후
+실기기에서 getWeather 정상 응답 확인 필요. 그 전까지 추천 평가의 날씨 관련 결과("날씨 정보 없음")는
+이 결함의 영향을 받은 값이다.
+
+**교훈**: 서버 입력 검증을 추가할 때는 실제 클라이언트가 보내는 값의 표본으로 테스트를 붙일 것.
+`GeminiWireTest`처럼 프록시 검증 규칙도 JVM/Node 단위 테스트 대상에 넣는다.
+
+## 2026-09-13 — 평가 1차 결과와 그에 따른 수정 (docs/eval/RESULTS.md 종합표 참조)
+
+**측정 규모**: 스크러버 5,000건(JVM), 실제 대화 315건 + 상위 30건, 합성 14건, 검색 질의 200건, 추천 42회.
+
+**수정한 것**:
+- `AgentOrchestrator`: getWeather 재호출의 `date="미정"`이 유효 날짜를 덮어쓰던 문제 → 유효값 우선(`ISO_DATE`).
+  실행 당시 meetingDate 정답 22/42 → 수정 로직 적용 시 39/42 기대.
+- `functions/index.js`: 날씨 구역코드 검증 정규식 수정(재배포 필요).
+
+**확인된 한계(수정 보류, 수치로 보고)**:
+- 성향 압축 재현율 0.51, 일정 재현율 50%: 여러 사람이 나눠 말한 선호·개인별 제약을 최종 결론으로 뭉뚱그림.
+  → 압축 프롬프트에 "참가자별 항목 분리" 지시 실험 예정.
+- 빈 선호 항목 21%("좋아요:"만): constrained decoding은 스키마만 강제. → `StatusToolJson` 또는 파이프라인에서
+  접두사만 있는 항목 제거 예정.
+- Reflection 부정문 오탐: 활동 설명의 "술집 대신 …"이 불호 '술집'으로 3회 연속 판정(syn-13). → 회피 표현 규칙 검토.
+- PiiScrubber 이름 규칙: 호격 조사(아/야) 미탐, 직함 호칭(교수님 등) 오탐, 명단 외 이름 4%. 단 Gemma 요약 기준
+  누출은 359건 중 1건이었고 그 1건은 스크러버가 막았다. 규칙 보강은 호격 조사 추가·직함 불용어 확대부터.
+
+**평가 인프라 교훈**: adb USB 연결이 세 차례 끊겼다. `am instrument -w`에 의존하지 말고 비동기 실행 + 완료 마커
+(logcat, 파일명 포함) 대기로 큐를 짜야 한다. logcat 버퍼 회전으로 카운트 기반 대기는 오판한다(실제로 한 번 겹쳐 실행됨).
+Gemma 디코딩은 결정론적이라 반복 측정 불필요.

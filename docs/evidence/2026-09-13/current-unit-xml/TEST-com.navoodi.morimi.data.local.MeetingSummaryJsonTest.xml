@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-13T04:52:12.139Z" hostname="DESKTOP-D17BMK3" time="0.044">
+  <properties/>
+  <testcase name="없는 필드는 기본값으로 - 구버전 스키마 호환" classname="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" time="0.038"/>
+  <testcase name="깨진 JSON은 크래시 없이 null" classname="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" time="0.0"/>
+  <testcase name="왕복 직렬화 - 기본값 요약도 보존" classname="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" time="0.004"/>
+  <testcase name="roomId 없는 JSON은 null" classname="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" time="0.0"/>
+  <testcase name="왕복 직렬화 - 모든 필드 보존" classname="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" time="0.001"/>
+  <testcase name="이름 없는 장소는 스킵" classname="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" time="0.0"/>
+  <testcase name="모르는 verification 값은 UNVERIFIED로 폴백" classname="com.navoodi.morimi.data.local.MeetingSummaryJsonTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

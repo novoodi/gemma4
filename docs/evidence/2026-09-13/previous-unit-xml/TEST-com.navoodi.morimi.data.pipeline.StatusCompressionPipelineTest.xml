@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-05T04:30:29.228Z" hostname="DESKTOP-D17BMK3" time="0.003">
+  <properties/>
+  <testcase name="병합 시 공백 항목은 제거한다" classname="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" time="0.001"/>
+  <testcase name="직전 상태와 새 상태를 합집합으로 병합하고 중복을 제거한다" classname="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" time="0.0"/>
+  <testcase name="설명 텍스트와 마크다운이 섞여도 JSON 블록만 추출한다" classname="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" time="0.0"/>
+  <testcase name="trailing comma가 있어도 파싱한다" classname="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" time="0.0"/>
+  <testcase name="JSON이 없으면 null을 반환한다" classname="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" time="0.0"/>
+  <testcase name="직전 상태가 없으면 fresh를 그대로 반환한다" classname="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" time="0.0"/>
+  <testcase name="병합 결과가 상한을 넘으면 오래된 항목부터 폐기한다" classname="com.navoodi.morimi.data.pipeline.StatusCompressionPipelineTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

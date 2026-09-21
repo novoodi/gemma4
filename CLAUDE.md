@@ -40,6 +40,8 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
 | `service/PiiScrubber` | 클라우드 전송 직전 결정론적 PII 마스킹 (순수 Kotlin, 명단 대조+정규식+호칭) |
 | `service/AgentOrchestrator` | 하이브리드 하네스 통제실. Gemini FC + Guardrail 재시도 루프 |
 | `service/GuardrailService` | 추천 장소 영업 여부 팩트체크. fail-open 금지 — 검증 불가는 UNKNOWN |
+| `service/CloudProxy` | 외부 API 프록시 게이트. Gemini·카카오·기상청 키는 APK에 없고 Functions 시크릿에만 존재 — 앱은 callable(`functions/index.js`)만 호출 |
+| `service/GeminiWire` | Gemini generateContent REST JSON 조립·해석 (순수 Kotlin, SDK 없음). `GeminiGateway` 포트로 오케스트레이터와 분리 |
 | `service/ModelDownloadService` | HF에서 모델 다운로드 (Foreground Service, Range 이어받기) |
 | `service/EmbeddingGemmaEmbedder` | EmbeddingGemma 임베더 (raw LiteRT+DJL). 프리픽스 API 강제, 로드→사용→해제 |
 | `data/pipeline/OnDeviceLlmPort` | 온디바이스 LLM 추상화 포트 (Gemma/Mock 런타임 교체) |
@@ -131,5 +133,9 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
   없으면 `assembleDebug` 실패 — SDK Manager로 해당 NDK 설치
 - 커밋: `type(scope): 한국어 요약` (feat/fix/chore/build/refactor).
   `.idea/` 변경은 커밋에 포함하지 않는다
-- 시크릿은 `local.properties` → BuildConfig 경유만.
+- **외부 API 키(Gemini·카카오·기상청)는 APK에 넣지 않는다.** Firebase Functions 시크릿
+  (`firebase functions:secrets:set`)에만 두고 `service/CloudProxy` 경유로 호출한다.
+  BuildConfig에 키를 다시 넣는 지름길은 임시로도 금지. 새 외부 API도 같은 방식으로
+  `functions/index.js`에 callable 프록시를 추가한다(로그인 필수, 입력 검증, 업스트림 타임아웃).
+  앱 측에 남는 시크릿이 꼭 필요하면 `local.properties` → BuildConfig 경유만.
   `google-services.json`·모델 파일·`*-debug.log`는 git 금지 (.gitignore 유지)

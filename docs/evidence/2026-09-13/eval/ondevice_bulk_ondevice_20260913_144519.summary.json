@@ -1,0 +1,56 @@
+{
+ "results_file": "ondevice_bulk_ondevice_20260913_144519.jsonl",
+ "device": "samsung SM-F966N",
+ "n": 315,
+ "errors": 0,
+ "model_load_ms": 3190,
+ "pii": {
+  "rows_leak_raw": 0,
+  "rows_leak_scrubbed": 0,
+  "rows_ok": 315,
+  "item_gold": {
+   "name": 94,
+   "phone": 100,
+   "participant_full": 644,
+   "email": 60
+  },
+  "item_leak_raw": {},
+  "item_leak_scrubbed": {},
+  "known_name_leak_raw": 0,
+  "known_name_leak_scrubbed": 0,
+  "third_party_leak_raw": 0,
+  "third_party_leak_scrubbed": 0,
+  "over_mask_rows": 5
+ },
+ "format": {
+  "sent_ok": 302,
+  "md_free": 315,
+  "sent_counts": {
+   "2": 273,
+   "1": 13,
+   "3": 29
+  }
+ },
+ "reference_coverage_mean": 0.24723523968756614,
+ "compress": {
+  "n": 315,
+  "parse_ok": 315,
+  "path": {
+   "constrained": 315
+  },
+  "participant_recall_mean": 1.0,
+  "pref_prefixed": 566,
+  "pref_total": 566,
+  "pref_hollow": 119
+ },
+ "latency_ms": {
+  "summary_p50_p95": [
+   "3804",
+   "5123"
+  ],
+  "compress_p50_p95": [
+   "7355",
+   "10804"
+  ]
+ }
+}

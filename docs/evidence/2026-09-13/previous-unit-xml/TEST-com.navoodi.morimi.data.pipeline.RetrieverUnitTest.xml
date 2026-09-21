@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-09-05T04:30:29.195Z" hostname="DESKTOP-D17BMK3" time="0.031">
+  <properties/>
+  <testcase name="동일 벡터 코사인 1" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.0"/>
+  <testcase name="직교 벡터 코사인 0" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.0"/>
+  <testcase name="jaccard 교집합-합집합 비율" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.004"/>
+  <testcase name="tokenize는 2글자 이상 토큰만 소문자로 추출" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.005"/>
+  <testcase name="전체 후기에서 키워드 관련성 순으로 top-k (방 무관)" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.02"/>
+  <testcase name="쿼리 토큰이 없으면 최근순 폴백" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.0"/>
+  <testcase name="반대 방향 코사인 -1" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.0"/>
+  <testcase name="크기 다르거나 0벡터면 0 반환" classname="com.navoodi.morimi.data.pipeline.RetrieverUnitTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

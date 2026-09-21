@@ -14,7 +14,6 @@ navigationCompose = "2.8.9"
 litertlm = "0.11.0"
 litert = "1.4.0"
 djl = "0.33.0"
-googleGenai = "1.56.0"
 credentialManager = "1.5.0"
 googleid = "1.1.1"
 
@@ -44,7 +43,6 @@ litert-support = { group = "com.google.ai.edge.litert", name = "litert-support",
 # EmbeddingGemma 토크나이저: HF tokenizer.json 로더(JVM API) + 안드로이드 네이티브(.so)
 djl-tokenizers = { group = "ai.djl.huggingface", name = "tokenizers", version.ref = "djl" }
 djl-tokenizer-native-android = { group = "ai.djl.android", name = "tokenizer-native", version.ref = "djl" }
-google-genai = { group = "com.google.genai", name = "google-genai", version.ref = "googleGenai" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
@@ -52,6 +50,7 @@ androidx-credentials = { group = "androidx.credentials", name = "credentials", v
 androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentialManager" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
+firebase-functions = { module = "com.google.firebase:firebase-functions" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -1,0 +1,22 @@
+ M .gitignore
+ M .idea/deploymentTargetSelector.xml
+ M .idea/misc.xml
+ M CLAUDE.md
+ M README.md
+ M app/build.gradle.kts
+ M app/proguard-rules.pro
+ M app/src/main/java/com/navoodi/morimi/service/AgentOrchestrator.kt
+ M app/src/main/java/com/navoodi/morimi/service/KakaoLocalService.kt
+ M app/src/main/java/com/navoodi/morimi/service/WeatherService.kt
+ M app/src/test/java/com/navoodi/morimi/data/pipeline/RetrieverUnitTest.kt
+ M docs/DEVLOG.md
+ M functions/index.js
+ M gradle/libs.versions.toml
+?? .docs-tmp/
+?? AGENTS.md
+?? app/src/main/java/com/navoodi/morimi/service/CloudProxy.kt
+?? app/src/main/java/com/navoodi/morimi/service/GeminiGateway.kt
+?? app/src/main/java/com/navoodi/morimi/service/GeminiWire.kt
+?? app/src/test/java/com/navoodi/morimi/service/GeminiWireTest.kt
+?? docs/evidence/
+?? docs/report/
