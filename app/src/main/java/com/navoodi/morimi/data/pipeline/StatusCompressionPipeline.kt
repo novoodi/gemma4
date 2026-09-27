@@ -64,10 +64,15 @@ class StatusCompressionPipeline(
      * internal — 단위 테스트로 직접 검증 가능.
      */
     internal fun mergeStatus(existing: UserStatusEntity?, fresh: UserStatusEntity): UserStatusEntity {
-        if (existing == null) return fresh
+        // 파싱 단계에서도 빈 항목을 거르지만, 그 이전 버전에서 이미 저장된 빈 항목("좋아요:")은
+        // 병합 시점에 함께 정리한다 — 그렇지 않으면 프로필에 영구히 남는다.
+        if (existing == null) return fresh.copy(preferences = PreferenceEntries.contentful(fresh.preferences))
         return fresh.copy(
             participants = mergeDistinct(existing.participants, fresh.participants),
-            preferences = mergeDistinct(existing.preferences, fresh.preferences),
+            preferences = mergeDistinct(
+                PreferenceEntries.contentful(existing.preferences),
+                PreferenceEntries.contentful(fresh.preferences),
+            ),
             availability = mergeDistinct(existing.availability, fresh.availability),
         )
     }
