@@ -20,7 +20,7 @@ class KeywordFallbackRetriever(
         val qTokens = tokenize(query)
         // 쿼리에서 유의미한 토큰을 못 뽑으면 최근순 폴백(getByRoom이 id DESC 정렬)
         if (qTokens.isEmpty()) {
-            return candidates.take(topK).map { FeedbackEntry(it.date, it.feedback, it.roomId) }
+            return candidates.take(topK).map { FeedbackEntry(it.date, it.feedback, it.roomId, it.rating) }
         }
 
         return candidates
@@ -28,7 +28,7 @@ class KeywordFallbackRetriever(
             .filter { it.second > 0.0 }
             .sortedByDescending { it.second }
             .take(topK)
-            .map { (e, _) -> FeedbackEntry(e.date, e.feedback, e.roomId) }
+            .map { (e, _) -> FeedbackEntry(e.date, e.feedback, e.roomId, e.rating) }
     }
 
     companion object {

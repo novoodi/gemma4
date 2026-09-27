@@ -43,6 +43,15 @@ class RetrievalEvalRunner {
         override suspend fun getAll() = items.toList()
         override suspend fun getMissingEmbeddings() = items.filter { it.embedding == null }
         override suspend fun deleteByRoom(roomId: String) {}
+        // 고도화 이식(2026-09-23): 평점·후기 팝업 정책이 DAO에 추가돼 가짜 구현도 맞춘다
+        override suspend fun updateRating(id: Long, rating: Int) {
+            val i = items.indexOfFirst { it.id == id }
+            if (i >= 0) items[i] = items[i].copy(rating = rating)
+        }
+        override suspend fun getRated() = items.filter { it.rating > 0 }
+        override suspend fun latestFeedbackTimestamp(roomId: String) =
+            items.filter { it.roomId == roomId }.maxOfOrNull { it.createdAt }
+        override suspend fun countByRoom(roomId: String) = items.count { it.roomId == roomId }
         override suspend fun clear() { items.clear() }
     }
 

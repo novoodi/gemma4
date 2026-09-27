@@ -11,12 +11,14 @@ import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
 import com.navoodi.morimi.data.repository.ChatRepository
-import com.navoodi.morimi.service.AgentEvent
-import com.navoodi.morimi.service.AgentEventTracker
-import com.navoodi.morimi.service.AgentOrchestrator
+import com.navoodi.morimi.data.repository.MetricsRepository.FeedbackTarget
+import com.navoodi.morimi.service.AssistantEvent
+import com.navoodi.morimi.service.AssistantEventTracker
+import com.navoodi.morimi.service.AssistantOrchestrator
 import com.navoodi.morimi.service.FcmService
 import com.navoodi.morimi.service.OrchestratorResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,7 +42,7 @@ sealed class LeaveState {
     data class Error(val message: String) : LeaveState()
 }
 
-data class AgentDebugEntry(val emoji: String, val label: String, val content: String)
+data class AssistantDebugEntry(val emoji: String, val label: String, val content: String)
 
 class ChatViewModel(
     application: Application,
@@ -51,9 +53,10 @@ class ChatViewModel(
     private val llmService = (application as MoimApp).llmService
     private val userStatusRepository = (application as MoimApp).userStatusRepository
     private val compressionPipeline: StatusCompressionPipeline = (application as MoimApp).compressionPipeline
-    private val agentOrchestrator: AgentOrchestrator = (application as MoimApp).agentOrchestrator
+    private val agentOrchestrator: AssistantOrchestrator = (application as MoimApp).agentOrchestrator
     private val feedbackRepository = (application as MoimApp).feedbackRepository
     private val summaryRepository = (application as MoimApp).summaryRepository
+    private val metricsRepository = (application as MoimApp).metricsRepository
     val roomId: String = checkNotNull(savedStateHandle["roomId"])
 
     companion object {
@@ -86,8 +89,8 @@ class ChatViewModel(
     private val _agentProgress = MutableStateFlow("")
     val agentProgress: StateFlow<String> = _agentProgress.asStateFlow()
 
-    private val _debugLog = MutableStateFlow<List<AgentDebugEntry>>(emptyList())
-    val debugLog: StateFlow<List<AgentDebugEntry>> = _debugLog.asStateFlow()
+    private val _debugLog = MutableStateFlow<List<AssistantDebugEntry>>(emptyList())
+    val debugLog: StateFlow<List<AssistantDebugEntry>> = _debugLog.asStateFlow()
 
     private var compressionJob: Job? = null
 
@@ -98,6 +101,9 @@ class ChatViewModel(
     // 후기 팝업 — 추천받은 방 재진입 시, 아직 후기 미작성이면 노출 (RAG 데이터 확보)
     private val _showFeedbackPrompt = MutableStateFlow(false)
     val showFeedbackPrompt: StateFlow<Boolean> = _showFeedbackPrompt.asStateFlow()
+    private var pendingFeedbackTarget: FeedbackTarget? = null
+    private val _feedbackError = MutableStateFlow<String?>(null)
+    val feedbackError: StateFlow<String?> = _feedbackError.asStateFlow()
 
     // 이 방에 저장된(영속 복원 포함) 지난 추천이 있는지 — "지난 추천 보기" 진입점 노출 근거
     val hasSavedSummary: StateFlow<Boolean> = ChatRepository.summaries
@@ -106,7 +112,17 @@ class ChatViewModel(
 
     init {
         viewModelScope.launch {
-            if (feedbackRepository.shouldPromptFeedback(roomId)) _showFeedbackPrompt.value = true
+            try {
+                if (feedbackRepository.shouldPromptFeedback(roomId)) {
+                    pendingFeedbackTarget = metricsRepository.feedbackTargetFor(roomId)
+                    _showFeedbackPrompt.value = true
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "후기 대상 조회 실패", error)
+                _feedbackError.value = "후기 대상을 확인하지 못했습니다. 방에 다시 들어와 주세요."
+            }
         }
     }
 
@@ -115,13 +131,43 @@ class ChatViewModel(
      * 임베딩은 수십 초 걸리므로 **applicationScope**에서 실행한다 — 저장 직후 사용자가
      * 화면을 벗어나 ViewModel이 파괴돼도 임베딩이 취소되지 않고 끝까지 완료된다.
      */
-    fun submitFeedback(text: String) {
-        if (text.isBlank()) return
+    fun submitFeedback(text: String, rating: Int = 0) {
+        if (text.isBlank() || rating !in 0..5 || !_showFeedbackPrompt.value) return
+        val target = pendingFeedbackTarget
         _showFeedbackPrompt.value = false
-        getApplication<MoimApp>().applicationScope.launch { feedbackRepository.append(text, roomId) }
+        getApplication<MoimApp>().applicationScope.launch {
+            try {
+                feedbackRepository.append(text, roomId, rating)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "후기 저장 실패", error)
+                _feedbackError.value = "후기 저장을 완료하지 못했습니다. 저장 상태를 확인해 주세요."
+                return@launch
+            }
+            if (rating > 0 && target != null) {
+                try {
+                    // 임베딩 도중 새 추천이 생겨도 입력창을 열 때의 실행에만 연결한다.
+                    val learned = metricsRepository.attachSatisfaction(target, rating)
+                    if (learned != null) {
+                        Log.d(TAG, "만족도 $rating/5 반영 — 재학습 보정 ${learned.appliedDeltas.size}건")
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(TAG, "만족도 학습 저장 실패", error)
+                    _feedbackError.value = "후기는 저장됐지만 평점을 다음 추천에 반영하지 못했습니다."
+                }
+            }
+        }
     }
 
-    fun dismissFeedbackPrompt() { _showFeedbackPrompt.value = false }
+    fun dismissFeedbackPrompt() {
+        _showFeedbackPrompt.value = false
+        pendingFeedbackTarget = null
+    }
+
+    fun dismissFeedbackError() { _feedbackError.value = null }
 
     fun onInputChange(text: String) { _inputText.value = text }
 
@@ -172,7 +218,7 @@ class ChatViewModel(
                 val userStatus = userStatusRepository.getStatus(roomId)
                 Log.d(TAG, "orchestrate 시작 — roomId=$roomId userStatus=$userStatus")
 
-                _debugLog.value = _debugLog.value + AgentDebugEntry(
+                _debugLog.value = _debugLog.value + AssistantDebugEntry(
                     emoji = "👤",
                     label = "저장된 사용자 성향 (Gemini에 전달됨)",
                     content = buildString {
@@ -182,32 +228,73 @@ class ChatViewModel(
                     }
                 )
 
-                val tracker = object : AgentEventTracker {
-                    override fun onEvent(event: AgentEvent) {
+                val tracker = object : AssistantEventTracker {
+                    override fun onEvent(event: AssistantEvent) {
                         _agentProgress.value = when (event) {
-                            is AgentEvent.OrchestrationStarted  -> "대화 내용을 분석하고 있습니다..."
-                            is AgentEvent.GemmaSummaryCompleted -> "핵심 내용을 추출했습니다. 클라우드에 연결 중..."
-                            is AgentEvent.PromptGenerated       -> "AI에게 질문을 전달하고 있습니다... (시도 ${event.attempt})"
-                            is AgentEvent.ToolCalled            -> when (event.name) {
+                            is AssistantEvent.OrchestrationStarted  -> "대화 내용을 분석하고 있습니다..."
+                            is AssistantEvent.ContextClassified     -> "모임 성격을 파악했습니다: ${event.label}"
+                            is AssistantEvent.CriteriaWeighted      -> "이 상황에 맞는 판단 기준을 세웠습니다..."
+                            is AssistantEvent.GemmaSummaryCompleted -> "핵심 내용을 추출했습니다. 클라우드에 연결 중..."
+                            is AssistantEvent.SieveNormalized       -> "요청을 정해진 형식으로 정리했습니다..."
+                            is AssistantEvent.PlacesRanked          -> "후보를 기준별로 비교하고 있습니다..."
+                            is AssistantEvent.MetricsRecorded       -> "결과 품질을 기록했습니다."
+                            is AssistantEvent.PromptGenerated       -> "AI에게 질문을 전달하고 있습니다... (시도 ${event.attempt})"
+                            is AssistantEvent.ToolCalled            -> when (event.name) {
                                 "getWeather"  -> "날씨를 확인하고 있습니다..."
                                 "searchPlace" -> "주변 장소를 검색하고 있습니다..."
                                 else          -> "정보를 수집하고 있습니다..."
                             }
-                            is AgentEvent.JsonParsed            -> "추천 결과를 정리하고 있습니다..."
-                            is AgentEvent.GuardrailEvaluated    -> if (event.passed)
+                            is AssistantEvent.JsonParsed            -> "추천 결과를 정리하고 있습니다..."
+                            is AssistantEvent.GuardrailEvaluated    -> if (event.passed)
                                 "추천 결과를 검증했습니다."
                             else
                                 "결과를 다듬고 있습니다... (시도 ${event.attempt})"
-                            is AgentEvent.ReflectionEvaluated   -> if (event.passed)
+                            is AssistantEvent.ReflectionEvaluated   -> if (event.passed)
                                 "취향 제약을 점검했습니다."
                             else
                                 "싫어하시는 요소를 발견해 다시 추천합니다... (시도 ${event.attempt})"
-                            is AgentEvent.OrchestrationFinished -> if (event.success) "완료!" else "분석을 마쳤습니다."
+                            is AssistantEvent.OrchestrationFinished -> if (event.success) "완료!" else "분석을 마쳤습니다."
                         }
 
-                        val entry: AgentDebugEntry? = when (event) {
-                            is AgentEvent.GemmaSummaryCompleted ->
-                                AgentDebugEntry("🤖", "Gemma 온디바이스 요약 (원문 미전송)", buildString {
+                        val entry: AssistantDebugEntry? = when (event) {
+                            is AssistantEvent.ContextClassified ->
+                                AssistantDebugEntry("🧭", "상황 분류 (온디바이스 — 원문은 기기 안에서만 읽음)", buildString {
+                                    appendLine("판정: ${event.label} (${event.context})")
+                                    appendLine("신뢰도: ${"%.1f".format(event.confidence * 100)}%")
+                                    if (event.signals.isNotEmpty()) appendLine("근거 키워드: ${event.signals.joinToString(", ")}")
+                                    append("차순위 후보: ${event.runnerUp ?: "없음"}")
+                                })
+                            is AssistantEvent.CriteriaWeighted ->
+                                AssistantDebugEntry("⚖️", "AHP 판단 기준 가중치 — ${event.context}", buildString {
+                                    event.weights.forEachIndexed { i, (label, w) ->
+                                        appendLine("${i + 1}. $label ${"%.1f".format(w * 100)}%")
+                                    }
+                                    appendLine("일관성 비율 CR=${"%.4f".format(event.cr)} (임계 0.10, ${if (event.consistent) "유효" else "기각"})")
+                                    append(
+                                        if (event.learnedDeltas > 0)
+                                            "지난 피드백 학습 반영 ${event.learnedDeltas}건" +
+                                                if (event.droppedDeltas > 0) " (일관성 위반으로 ${event.droppedDeltas}건 기각)" else ""
+                                        else "학습 보정 없음 — 상황 기본 가중치"
+                                    )
+                                })
+                            is AssistantEvent.SieveNormalized ->
+                                AssistantDebugEntry("🧱", "거름망 — 정형화된 요청 블록 (실제 전송분)", buildString {
+                                    append(event.frame)
+                                    if (event.missingSlots.isNotEmpty()) {
+                                        appendLine()
+                                        appendLine()
+                                        append("⚠ 미확정 슬롯 ${event.missingSlots.size}개: ${event.missingSlots.joinToString(", ")}")
+                                    }
+                                })
+                            is AssistantEvent.PlacesRanked ->
+                                AssistantDebugEntry("📐", "AHP 종합 랭킹 (시도 ${event.attempt})", buildString {
+                                    event.ranking.forEachIndexed { i, r -> appendLine("${i + 1}. $r") }
+                                    append(if (event.changed) "→ 기준 가중치에 따라 순서를 재배열함" else "→ 원래 순서 유지")
+                                })
+                            is AssistantEvent.MetricsRecorded ->
+                                AssistantDebugEntry("📈", "하네스 품질 지표", event.summary)
+                            is AssistantEvent.GemmaSummaryCompleted ->
+                                AssistantDebugEntry("🤖", "Gemma 온디바이스 요약 (원문 미전송)", buildString {
                                     append(event.summary)
                                     if (event.redactions > 0) {
                                         appendLine()
@@ -217,18 +304,18 @@ class ChatViewModel(
                                         append("🛡 PII 스크러버: 클라우드 전송 직전 ${event.redactions}건 마스킹 ($detail)")
                                     }
                                 })
-                            is AgentEvent.PromptGenerated ->
-                                AgentDebugEntry("📝", "Gemini 전달 프롬프트 (시도 ${event.attempt})", event.prompt)
-                            is AgentEvent.ToolCalled ->
-                                AgentDebugEntry("🔧", "도구 호출: ${event.name}", buildString {
+                            is AssistantEvent.PromptGenerated ->
+                                AssistantDebugEntry("📝", "Gemini 전달 프롬프트 (시도 ${event.attempt})", event.prompt)
+                            is AssistantEvent.ToolCalled ->
+                                AssistantDebugEntry("🔧", "도구 호출: ${event.name}", buildString {
                                     event.args.entries.forEach { (k, v) -> appendLine("▸ $k: $v") }
                                     appendLine()
                                     append("결과:\n${event.result}")
                                 })
-                            is AgentEvent.JsonParsed ->
-                                AgentDebugEntry("📊", "Gemini 응답 JSON", event.rawJson)
-                            is AgentEvent.GuardrailEvaluated ->
-                                AgentDebugEntry(
+                            is AssistantEvent.JsonParsed ->
+                                AssistantDebugEntry("📊", "Gemini 응답 JSON", event.rawJson)
+                            is AssistantEvent.GuardrailEvaluated ->
+                                AssistantDebugEntry(
                                     if (event.passed) "✅" else "❌",
                                     "Guardrail 검증 (시도 ${event.attempt})",
                                     buildString {
@@ -236,8 +323,8 @@ class ChatViewModel(
                                         if (event.unknownCount > 0) append("\n⚠ 검증 불가 ${event.unknownCount}건 (장소 API 응답 없음)")
                                     }
                                 )
-                            is AgentEvent.ReflectionEvaluated ->
-                                AgentDebugEntry(
+                            is AssistantEvent.ReflectionEvaluated ->
+                                AssistantDebugEntry(
                                     if (event.passed) "🪞" else "🚫",
                                     "Reflection 자기비평 (시도 ${event.attempt})",
                                     if (event.passed) "통과 — 사용자 제약(싫어요) 위반 없음"

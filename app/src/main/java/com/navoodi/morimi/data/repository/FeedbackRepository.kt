@@ -8,6 +8,7 @@ import com.navoodi.morimi.data.local.FeedbackDao
 import com.navoodi.morimi.data.local.FeedbackEntity
 import com.navoodi.morimi.data.local.RecommendedRoomEntity
 import com.navoodi.morimi.service.EmbeddingGemmaEmbedder
+import com.navoodi.morimi.service.FeedbackPromptPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -16,7 +17,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 data class FeedbackEntry(
     val date: String,
     val feedback: String,
-    val roomId: String = ""
+    val roomId: String = "",
+    /** 5점 척도 만족도. 0이면 미평가 — 만족/불만족 어느 쪽 근거로도 쓰지 않는다. */
+    val rating: Int = 0,
 )
 
 /**
@@ -28,6 +31,7 @@ class FeedbackRepository(context: Context) {
 
     private val dao: FeedbackDao = AppDatabase.getInstance(context).feedbackDao()
     private val recommendedDao = AppDatabase.getInstance(context).recommendedRoomDao()
+    private val harnessRunDao = AppDatabase.getInstance(context).harnessRunDao()
     private val embedder = EmbeddingGemmaEmbedder(context)
     private val reindexRunning = AtomicBoolean(false)
 
@@ -38,7 +42,7 @@ class FeedbackRepository(context: Context) {
      * 후기 저장. **텍스트를 먼저 즉시 저장**하고(팝업 재출현·유실 방지), 임베딩은 그 뒤에 채운다.
      * 임베딩 생성은 수십 초가 걸릴 수 있어 저장을 블로킹하면 안 된다.
      */
-    suspend fun append(feedback: String, roomId: String = "") = withContext(Dispatchers.IO) {
+    suspend fun append(feedback: String, roomId: String = "", rating: Int = 0) = withContext(Dispatchers.IO) {
         if (feedback.isBlank()) return@withContext
 
         // 1) 텍스트 즉시 저장 — 이 시점부터 shouldPromptFeedback=false
@@ -48,6 +52,8 @@ class FeedbackRepository(context: Context) {
                 date = LocalDate.now().toString(),
                 feedback = feedback,
                 embedding = null,
+                rating = rating.coerceIn(0, 5),
+                createdAt = System.currentTimeMillis(),
             )
         )
         Log.d("FeedbackRepository", "후기 저장 [$roomId] id=$id: ${feedback.take(30)}")
@@ -97,7 +103,12 @@ class FeedbackRepository(context: Context) {
     }
 
     suspend fun loadAll(): List<FeedbackEntry> = withContext(Dispatchers.IO) {
-        dao.getAll().map { FeedbackEntry(it.date, it.feedback, it.roomId) }
+        dao.getAll().map { FeedbackEntry(it.date, it.feedback, it.roomId, it.rating) }
+    }
+
+    /** 평점이 매겨진 후기만 — 만족도 추이·AHP 과거만족 기준의 증거 */
+    suspend fun loadRated(): List<FeedbackEntry> = withContext(Dispatchers.IO) {
+        dao.getRated().map { FeedbackEntry(it.date, it.feedback, it.roomId, it.rating) }
     }
 
     suspend fun clearAll() = withContext(Dispatchers.IO) { dao.clear() }
@@ -107,8 +118,18 @@ class FeedbackRepository(context: Context) {
         recommendedDao.insert(RecommendedRoomEntity(roomId))
     }
 
-    /** 후기 팝업을 띄울지: 추천을 받은 적 있고(모임 성사) 아직 후기가 없는 방 */
+    /**
+     * 후기 팝업을 띄울지 — **최신 추천 이후 후기가 없으면** 띄운다(2026-09-23 C7).
+     *
+     * 예전 조건(`후기가 하나도 없음`)은 한 방에서 후기를 평생 1건만 수집해 재학습 데이터와
+     * 만족도 추이를 동시에 굶겼다. 판정 규칙은 [FeedbackPromptPolicy]에 순수 함수로 분리했다.
+     */
     suspend fun shouldPromptFeedback(roomId: String): Boolean = withContext(Dispatchers.IO) {
-        recommendedDao.exists(roomId) && dao.getByRoom(roomId).isEmpty()
+        FeedbackPromptPolicy.shouldPrompt(
+            wasRecommended = recommendedDao.exists(roomId),
+            latestRunAt = runCatching { harnessRunDao.latestRunTimestamp(roomId) }.getOrNull(),
+            latestFeedbackAt = runCatching { dao.latestFeedbackTimestamp(roomId) }.getOrNull(),
+            hasAnyFeedback = runCatching { dao.countByRoom(roomId) > 0 }.getOrDefault(false),
+        )
     }
 }

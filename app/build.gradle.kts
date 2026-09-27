@@ -50,6 +50,8 @@ android {
         unitTests {
             // android.util.Log 등 스텁 호출이 예외 대신 기본값을 반환하도록 (JVM 단위 테스트)
             isReturnDefaultValues = true
+            // Robolectric(마이그레이션 런타임 검증)이 리소스·매니페스트를 읽어야 한다
+            isIncludeAndroidResources = true
         }
     }
     packaging {
@@ -130,9 +132,15 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    // ── 고도화 이식: 마이그레이션 런타임 검증 + UI/통합 계측 테스트 ──────────
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.test:core:1.7.0")
+    testImplementation(libs.androidx.room.testing)
     // JVM 단위 테스트에서 org.json.JSONObject 실제 구현 사용 (android.jar 스텁은 예외 발생)
     testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)

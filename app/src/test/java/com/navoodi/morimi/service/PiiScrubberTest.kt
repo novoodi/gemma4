@@ -129,4 +129,50 @@ class PiiScrubberTest {
         assertEquals("차를 마시러 갑니다.", r.text)
         assertEquals(0, r.redactions)
     }
+
+    /**
+     * **호격 조사** — 채팅에서 이름을 부르는 가장 흔한 형태인데 조사 목록에 없었다.
+     * 2026-09-13 실기기 평가에서 명단 내 이름 미탐의 주원인이었다
+     * (`아` 77회, `야` 54회, `언(니)` 13, `형` 7, `쌤` 5 — `docs/eval/RESULTS.md`).
+     */
+    @Test
+    fun `이름을 부르는 형태도 마스킹한다`() {
+        val names = listOf("김민수", "박지영")
+        listOf(
+            "민수야 어디야",
+            "지영아 오늘 시간 돼?",
+            "고마워 민수야",
+            "지영언니 같이 가자",
+            "민수형 내일 봬요",
+            "지영쌤 안녕하세요",
+        ).forEach { text ->
+            val r = PiiScrubber.scrub(text, names)
+            assertFalse("이름이 남았다: [$text] -> [${r.text}]", r.text.contains("민수") || r.text.contains("지영"))
+        }
+    }
+
+    /**
+     * 호격 조사를 넣은 **대가** — 이름 뒤에 아/야로 시작하는 낱말이 띄어쓰기 없이 붙으면
+     * 오소거한다. 한국어는 낱말 사이를 띄우므로 드물고, 반대 방향 오류(실명이 클라우드로
+     * 나가는 것)가 비교할 수 없이 비싸서 받아들인 위험이다.
+     *
+     * **이 테스트는 "올바른 동작"이 아니라 "아는 한계"를 고정한다.**
+     * 여기가 깨지면 동작이 개선된 것일 수 있으니 기대값을 다시 보라.
+     */
+    @Test
+    fun `알려진 한계 - 띄어쓰기 없이 붙은 낱말은 오소거한다`() {
+        val r = PiiScrubber.scrub("지영아파트에서 만나자", listOf("박지영"))
+        assertTrue(
+            "오소거가 사라졌다면 개선된 것 — 기대값을 다시 볼 것: [${r.text}]",
+            r.text.contains("아파트"),
+        )
+        assertFalse("이름 부분은 마스킹된다", r.text.contains("지영"))
+    }
+
+    /** 조사가 아닌 한글이 이어지는 합성어는 여전히 건드리지 않는다 — 기존 동작 회귀 확인. */
+    @Test
+    fun `조사가 아닌 글자가 이어지면 소거하지 않는다`() {
+        val r = PiiScrubber.scrub("민수동 주민센터", listOf("김민수"))
+        assertTrue("합성어를 오소거했다: [${r.text}]", r.text.contains("민수동"))
+    }
 }

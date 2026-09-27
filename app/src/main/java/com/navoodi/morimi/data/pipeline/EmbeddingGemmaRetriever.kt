@@ -25,6 +25,6 @@ class EmbeddingGemmaRetriever(
             .sortedByDescending { it.second }
             .take(topK)
             .also { top -> Log.d("EmbeddingGemmaRetriever", "전체 후보 ${candidates.size} → top${top.size} (최고 cos=${top.firstOrNull()?.second})") }
-            .map { (e, _) -> FeedbackEntry(date = e.date, feedback = e.feedback, roomId = e.roomId) }
+            .map { (e, _) -> FeedbackEntry(date = e.date, feedback = e.feedback, roomId = e.roomId, rating = e.rating) }
     }
 }

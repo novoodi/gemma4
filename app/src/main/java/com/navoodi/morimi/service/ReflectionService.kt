@@ -25,8 +25,9 @@ data class ReflectionResult(
  * 취한다 — 자유 텍스트 후기의 의미 판정은 오탐이 크므로 v1 범위에서 제외(향후 온디바이스
  * LLM 시맨틱 판정으로 확장 가능). 자유 후기는 여전히 Gemini 프롬프트에 소프트 가이드로 주입됨.
  *
- * 매칭은 **정밀도 우선**: 불호 구절의 내용 토큰이 한 추천 항목(장소명+이유, 활동, 요약) 안에
- * 모두 나타날 때만 위반으로 본다. 부정문("시끄럽지 않은")·우연한 단일 토큰 일치로 인한
+ * 매칭은 [KoTextMatch]에 위임한다 — **정밀도 우선**: 불호 구절의 내용 토큰이 한 추천 항목
+ * (장소명+이유+주소, 활동) 안에 모두 나타날 때만 위반으로 본다. [PlaceRanker]의 제약 채점과
+ * 같은 규칙을 써야 "Reflection은 통과인데 랭킹은 감점" 같은 모순이 생기지 않는다. 부정문("시끄럽지 않은")·우연한 단일 토큰 일치로 인한
  * 오탐을 억제한다(재현율보다 정밀도 — 오탐은 불필요한 재시도·총 실패를 유발하므로).
  *
  * 순수 Kotlin(안드로이드 의존성 없음) — JVM 단위 테스트 가능(컨벤션 #6).
@@ -34,22 +35,13 @@ data class ReflectionResult(
 object ReflectionService {
 
     // Gemma 압축 포맷의 불호 접두사 (LlmService 프롬프트 참조: "싫어요:" 등)
-    private val DISLIKE_PREFIXES = listOf("싫어요", "싫어함", "싫음", "불호", "비선호")
-
-    // 매칭에서 제외할 일반 명사/조사류 — 남기면 아무 추천에나 걸려 오탐이 된다.
-    private val STOPWORDS = setOf(
-        "곳", "것", "데", "거", "등", "좀", "걸", "게", "수", "및", "때", "점", "건",
-        "분위기", "스타일", "느낌", "같은", "정도", "쪽", "거는", "그런",
-    )
-
-    private const val MIN_TOKEN_LEN = 2
 
     /**
-     * @param places      추천 장소 (이름·이유가 매칭 대상)
+     * @param places      추천 장소 (이름·이유·주소가 매칭 대상)
      * @param activities  추천 활동
      * @param preferences 사용자 성향 프로필(userStatus.preferences) — "싫어요:" 항목만 사용
      *
-     * 검사 대상은 **실제 추천 항목**(장소명+이유, 활동)뿐이다. 요약문 같은 설명 산문은
+     * 검사 대상은 **실제 추천 항목**(장소명+이유+주소, 활동)뿐이다. 요약문 같은 설명 산문은
      * 제외한다 — "술집은 제외했어요"처럼 회피한 항목을 서술할 때 토큰이 걸려 오탐이 되기 때문
      * (부정문 문제). 준수한 재시도가 서술 때문에 영영 통과 못 하는 상황을 막는다.
      */
@@ -63,21 +55,11 @@ object ReflectionService {
             return ReflectionResult(passed = true, violations = emptyList(), feedbackForRetry = "")
         }
 
-        // 추천을 라벨링된 항목 단위로 분해 — 위반은 "한 항목 안에서 모든 토큰 동시 등장"으로 판정
-        val segments: List<Pair<String, String>> = buildList {
-            places.forEach { p ->
-                add("장소: ${p.name}" to "${p.name} ${p.reason}")
-            }
-            activities.forEach { a -> add("활동" to a) }
-        }
+        val segments = segmentsOf(places, activities)
 
         val violations = mutableListOf<ConstraintViolation>()
         for (dislike in dislikes) {
-            val tokens = contentTokens(dislike)
-            if (tokens.isEmpty()) continue
-            val hit = segments.firstOrNull { (_, text) ->
-                tokens.all { text.contains(it) }
-            }
+            val hit = segments.firstOrNull { (_, text) -> KoTextMatch.matches(text, dislike) }
             if (hit != null) {
                 violations.add(ConstraintViolation(constraint = dislike, matchedIn = hit.first))
             }
@@ -94,20 +76,44 @@ object ReflectionService {
         return ReflectionResult(passed = passed, violations = violations, feedbackForRetry = feedback)
     }
 
-    /** preferences에서 불호 접두사가 붙은 항목의 제약 텍스트(접두사·콜론 제거)를 추출. */
-    private fun extractDislikes(preferences: List<String>): List<String> =
-        preferences.mapNotNull { raw ->
-            val entry = raw.trim()
-            val prefix = DISLIKE_PREFIXES.firstOrNull { p ->
-                entry.startsWith(p)  // "싫어요: ...", "싫어요 ..." 모두 허용
-            } ?: return@mapNotNull null
-            entry.removePrefix(prefix).trimStart(':', ' ', '：').trim().takeIf { it.isNotBlank() }
-        }.distinct()
+    /**
+     * 추천을 라벨링된 항목 단위로 분해 — 위반은 "한 항목 안에서 모든 토큰 동시 등장"으로 판정.
+     * `label to 매칭 대상 텍스트`.
+     */
+    private fun segmentsOf(
+        places: List<RecommendedPlace>,
+        activities: List<String>,
+    ): List<Pair<String, String>> = buildList {
+        places.forEach { p -> add("장소: ${p.name}" to KoTextMatch.placeText(p)) }
+        activities.forEach { a -> add("활동" to a) }
+    }
 
-    /** 제약 구절을 매칭용 내용 토큰으로 분해 — 공백·문장부호로 나누고 불용어·단문자 제거. */
-    private fun contentTokens(constraint: String): List<String> =
-        constraint.split(Regex("""[\s,./·|()\[\]]+"""))
-            .map { it.trim() }
-            .filter { it.length >= MIN_TOKEN_LEN && it !in STOPWORDS }
-            .distinct()
+    /**
+     * **제약 준수율 지표 전용** — 불호를 하나라도 건드린 **항목의 수**(중복 제거).
+     *
+     * [reflect]가 세는 [ReflectionResult.violations]는 "불호 구절당 최대 1건"이라 분자의 단위가
+     * *구절*인데, 지표의 분모는 *항목 수*(장소+활동)다. 단위가 다르면 비율이 의미를 잃는다
+     * — 한 항목이 불호 3개를 어기면 항목은 1개인데 위반은 3건이 되어 준수율이 음수 방향으로 튄다.
+     * 그래서 지표는 이 함수(항목 단위)를 쓰고, [reflect]의 재시도 판정·피드백 문구는 그대로 둔다.
+     *
+     * 매칭 규칙은 [reflect]와 동일한 [KoTextMatch] 정밀도 우선 규칙을 재사용한다 —
+     * 두 곳이 다른 규칙을 쓰면 "Reflection은 통과인데 지표는 위반"이 생긴다.
+     */
+    fun violatingItemCount(
+        places: List<RecommendedPlace>,
+        activities: List<String>,
+        preferences: List<String>,
+    ): Int {
+        val dislikes = extractDislikes(preferences)
+        if (dislikes.isEmpty()) return 0
+        return segmentsOf(places, activities)
+            .count { (_, text) -> dislikes.any { KoTextMatch.matches(text, it) } }
+    }
+
+    /**
+     * preferences에서 불호 항목의 제약 텍스트를 추출.
+     * 규칙은 [PreferenceEntries]에 있다 — 거름망과 같은 접두사 목록을 써야 판정이 어긋나지 않는다.
+     */
+    private fun extractDislikes(preferences: List<String>): List<String> =
+        PreferenceEntries.dislikes(preferences)
 }

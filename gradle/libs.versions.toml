@@ -45,6 +45,7 @@ djl-tokenizers = { group = "ai.djl.huggingface", name = "tokenizers", version.re
 djl-tokenizer-native-android = { group = "ai.djl.android", name = "tokenizer-native", version.ref = "djl" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentialManager" }
 androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentialManager" }

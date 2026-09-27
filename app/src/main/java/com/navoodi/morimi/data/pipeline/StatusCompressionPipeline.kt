@@ -6,6 +6,7 @@ import com.navoodi.morimi.data.model.Message
 import com.navoodi.morimi.data.repository.UserStatusRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.navoodi.morimi.service.PreferenceEntries
 import org.json.JSONObject
 
 class StatusCompressionPipeline(
@@ -104,7 +105,12 @@ class StatusCompressionPipeline(
             UserStatusEntity(
                 roomId = roomId,
                 participants = parseArray("participants"),
-                preferences = parseArray("preferences"),
+                // 접두사만 있고 내용이 빈 항목("좋아요:")을 **여기서** 버린다.
+                // 2026-09-13 실기기 평가에서 566개 중 119개(21.0%)가 그랬다.
+                // constrained decoding이 스키마는 강제하지만 내용 공백은 막지 못한다.
+                // 읽는 쪽은 원래 걸렀지만 저장은 그대로 돼서 프로필에 영구 누적되고
+                // 디버그 패널에 "좋아요:, 좋아요:"처럼 떴다. 모델 출력을 믿지 않는다(컨벤션 #2).
+                preferences = PreferenceEntries.contentful(parseArray("preferences")),
                 availability = parseArray("availability"),
                 lastUpdated = System.currentTimeMillis()
             )
