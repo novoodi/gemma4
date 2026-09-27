@@ -14,10 +14,9 @@
 
 | 문서 | 내용 |
 |---|---|
-| [docs/SUMMARY.md](docs/SUMMARY.md) | **전체 정리 — 여기부터 읽으세요.** 무엇을 했고 지금 어떤 상태인지 한 번에 |
-| [docs/HANDOVER.md](docs/HANDOVER.md) | **인수인계** — 검증 결과, 파일 지도, 알려진 한계, 시연 가이드, 빌드 함정 |
-| [docs/SCENARIOS.md](docs/SCENARIOS.md) | 시나리오별 단계 출력 (실제 구현 실행 결과) |
 | [docs/DEVLOG.md](docs/DEVLOG.md) | 아키텍처 결정 기록 — 근거·기각한 대안·잔여 리스크 |
+| [docs/eval/RESULTS.md](docs/eval/RESULTS.md) | 실기기·JVM 정량 평가 결과 (측정 조건·표본 수 병기) |
+| [docs/report/](docs/report/) | 캡스톤 보고서 원고 (제안·계획·분석·요구사항·진행) |
 | [CLAUDE.md](CLAUDE.md) | 코드 컨벤션·불변 원칙 (기여 전 필독) |
 
 ---
@@ -38,7 +37,7 @@
 | 1순위 판단 기준 | **목적 적합 41.4%** | **제약 준수 44.2%** |
 | 최종 1위 | 루프탑 다이닝 (0.879) | 골목 포차 (0.865) |
 
-(실제 구현 실행 결과 — 단계별 전체 출력은 [docs/SCENARIOS.md](docs/SCENARIOS.md))
+(실제 구현 실행 결과 — 수치는 [`ScenarioSnapshotTest`](app/src/test/java/com/navoodi/morimi/service/ScenarioSnapshotTest.kt)가 재현·고정)
 
 ---
 
@@ -102,7 +101,7 @@
   지표에서도 검증 불가를 할루시네이션으로 계상하지 않습니다(API 장애가 모델 성능 저하로
   보이면 지표가 거짓말을 합니다).
 - **테스트 가능한 설계** — 핵심 로직 전부를 Android 비의존 순수 Kotlin으로 분리
-  → **JVM 단위 테스트 185건**(실패 0).
+  → **JVM 단위 테스트 239건**(실패 0).
 
 ### 실기기 정량 평가 (2026-09-13, SM-F966N)
 
@@ -136,7 +135,7 @@
   실제 만족도 분포로 재산정해야 합니다.
 - **실기기 검증 범위를 구분해야 합니다.** 기반 파이프라인(요약·압축·후기 검색·추천)은
   2026-09-13에 실기기 정량 평가를 마쳤지만, **상황 분류·AHP·거름망·지표·재학습은
-  실기기에서 돌려 본 적이 없습니다.** JVM 185건과 Robolectric 마이그레이션 검증,
+  실기기에서 돌려 본 적이 없습니다.** JVM 239건과 Robolectric 마이그레이션 검증,
   에뮬레이터 계측까지가 현재 근거입니다.
 - 상황 분류는 어휘 사전 기반이라 신조어·은어에 약합니다. 미분류는 하드 실패가 아니라
   `GENERIC`으로 흐르지만, 오분류 시 프레임과 가중치가 함께 어긋납니다.
@@ -175,7 +174,7 @@
 | **날씨 조회** | 기상청 단기예보 API로 모임 당일 날씨 자동 확인 |
 | **모임 후기 + 만족도 평점** | 채팅방 재진입 시 후기 팝업(자유 텍스트 + 5점 척도) → 온디바이스 임베딩 인덱싱 → 다음 추천에 반영 |
 | **피드백 순환 재학습** | 만족도가 들어오면 원인별로 AHP 판단을 보정 — 없는 가게가 나왔으면 검증 신뢰를, 싫어요를 어겼으면 제약 준수를 올린다. CR 위반 보정은 기각 |
-| **추천 품질 리포트** | 실행마다 정확도·할루시네이션율·적합도를 기록하고, 만족도 추이를 임계선과 함께 그래프로 표시(표본 수 병기) |
+| **추천 품질 리포트** | 실행마다 실존 확인율·할루시네이션율·확인률·제약 준수율을 기록하고, 만족도 추이를 임계선과 함께 그래프로 표시(표본 수 병기) |
 | **인앱 캘린더** | 확정된 모임 일정을 앱 내 캘린더에 추가 |
 
 ---
@@ -449,7 +448,7 @@ app/
 ├── data/
 │   ├── local/
 │   │   ├── AppDatabase.kt        # Room DB 싱글톤 (moim_database, v5 — +harness_run/ahp_judgment, feedback.rating)
-│   │   ├── HarnessRunEntity.kt   # 실행별 품질 지표 (정확도·할루시네이션·적합도·만족도·CR)
+│   │   ├── HarnessRunEntity.kt   # 실행별 품질 지표 (검증 개수·위반 항목 수·만족도·CR — 비율은 읽을 때 계산)
 │   │   ├── AhpJudgmentEntity.kt  # 상황별 학습된 AHP 판단 보정 (가중치가 아니라 판단을 저장)
 │   │   ├── UserStatusEntity.kt   # user_status 테이블 엔티티
 │   │   ├── UserStatusDao.kt      # @Insert(onConflict=REPLACE) / @Query DAO
@@ -481,7 +480,7 @@ app/
 │   ├── AhpEngine.kt              # AHP 계산 (행 기하평균 우선순위 벡터 + CI/CR 일관성 검사) (순수 Kotlin)
 │   ├── PlaceRanker.kt            # AHP 종합 — 후보 기준별 결정론 채점 + 가중합 랭킹 (순수 Kotlin)
 │   ├── AhpJudgmentLearner.kt     # 판단 재학습 — 원인별 보정 + CR 채택 게이트 (순수 Kotlin)
-│   ├── HarnessMetrics.kt         # 정확도/할루시네이션율/적합도 + 만족도 추이 (순수 Kotlin)
+│   ├── HarnessMetrics.kt         # 실존 확인율/할루시네이션율/확인률/제약 준수율 + 만족도 추이 (순수 Kotlin)
 │   ├── KoTextMatch.kt            # 한국어 구절 매칭 (정밀도 우선, Reflection·Ranker 공용) (순수 Kotlin)
 │   ├── PiiScrubber.kt            # 클라우드 전송 직전 결정론적 PII 마스킹 게이트 (순수 Kotlin)
 │   ├── CloudProxy.kt             # 외부 API 프록시 게이트 (Functions callable) — 앱에 API 키 없음
@@ -507,7 +506,7 @@ app/
     │   ├── summary/              # AI 분석 결과 카드 + 피드백 입력
     │   ├── calendar/             # 인앱 캘린더
     │   ├── vote/                 # 투표 화면
-    │   ├── metrics/              # 추천 품질 리포트 (만족도·정확도 추이 그래프 + 임계선)
+    │   ├── metrics/              # 추천 품질 리포트 (만족도·실존 확인율 추이 그래프 + 임계선)
     │   ├── modeldownload/        # Gemma 모델 다운로드 진행 UI
     │   └── profile/              # 마이페이지 / 프로필 편집
     └── theme/                    # Material 3 테마
@@ -603,7 +602,7 @@ app/
 | 상황 분류 | 가중 키워드 투표 + 부정 표현 억제 (결정론, 순수 Kotlin) |
 | 프롬프트 정형화 | 슬롯 필링 / 프레임 의미론 — 9슬롯 고정 스키마, 상대→절대 날짜 온디바이스 환산 |
 | 의사결정 | AHP (Saaty) — 상황별 쌍대비교 행렬, 행 기하평균 우선순위 벡터, CR 일관성 게이트 |
-| 품질 지표 | 정확도 / 할루시네이션율 / 적합도 3종 분리 측정 + 만족도 추이(5점 척도) |
+| 품질 지표 | 실존 확인율 / 할루시네이션율 / 확인률 / 제약 준수율 4종 분리 측정 + 만족도 추이(5점 척도) |
 | 개인화 방식 | UserStatus(Room) + 온디바이스 시맨틱 검색(EmbeddingGemma, 사용자 단위 후기) |
 | 프라이버시 | 온디바이스 Gemma 익명화 요약 + PiiScrubber 마스킹 게이트 → 원문·후기 미전송 |
 | 날씨 API | 기상청 단기예보(VilageFcst) v2.0 |
@@ -657,7 +656,15 @@ firebase deploy --only functions
 ./gradlew assembleDebug
 ```
 
-또는 Android Studio에서 Run(▶)을 누릅니다.
+또는 Android Studio에서 Run(▶)을 누릅니다. JVM 단위 테스트는 `./gradlew :app:testDebugUnitTest`로 실행합니다.
+
+> **빌드 전 확인**
+> - **프로젝트를 영문 경로에 두세요** (예: `C:\Users\<you>\projects\...`). OneDrive의 `바탕 화면`처럼
+>   한글이 들어간 경로에서는 JVM 단위 테스트가 전부 `ClassNotFoundException`으로 실패합니다.
+>   (`gradle.properties`의 `android.overridePathCheck=true`는 빌드만 허용할 뿐 이 문제를 풀지 못합니다)
+> - **NDK 28.2.13676358** 이 설치돼 있어야 합니다. 빌드 시 NDK에서 `libc++_shared.so`를 주입합니다
+>   (DJL 토크나이저 의존성). SDK Manager → SDK Tools → NDK에서 설치하세요.
+> - `local.properties`에 `sdk.dir`이 필요합니다. Android Studio로 열면 자동 생성됩니다.
 
 ---
 
@@ -670,7 +677,7 @@ firebase deploy --only functions
 5. 대화가 쌓이면 Gemma 4가 백그라운드에서 자동으로 성향을 분석하고 Room DB에 저장합니다.
 6. **이야기 정리** 버튼을 누르면 상황 분류 → Gemma 익명화 요약 → 거름망 정형화 → Gemini 추천 → 검증 → AHP 랭킹이 순서대로 실행됩니다. AI 로딩 화면의 디버그 패널에서 각 단계의 실제 출력(정형 블록, 기준 가중치와 CR, 랭킹 내역)을 그대로 볼 수 있습니다.
 7. 모임 후 채팅방에 다시 들어오면 후기 팝업이 뜹니다. **별점(5점 척도)과 후기**를 남기면 다음 추천의 판단 기준에 반영됩니다.
-8. **마이페이지 → 추천 품질 리포트**에서 만족도·정확도 추이와 상황별 학습된 판단 기준을 확인할 수 있습니다.
+8. **마이페이지 → 추천 품질 리포트**에서 만족도·실존 확인율 추이와 상황별 학습된 판단 기준을 확인할 수 있습니다.
 9. 캘린더 아이콘을 눌러 모임을 일정에 추가할 수 있습니다.
 
 ---
@@ -687,7 +694,7 @@ firebase deploy --only functions
 - 하네스 품질 지표(`harness_run`)와 학습된 AHP 판단(`ahp_judgment`)은 Room DB에 **기기 내에만** 저장되며 클라우드로 전송되지 않습니다.
 - **품질 리포트의 수치는 표본이 적습니다.** 개발 중 누적된 실행 기록 기준이므로 일반화된 성능 수치로 읽을 수 없으며, 화면에도 표본 수를 함께 표기합니다.
 - 상황 분류는 어휘 사전 기반이라 신조어·은어에 약합니다. 미분류는 실패가 아니라 `일반 모임`으로 처리되지만, 오분류 시 정형화 프레임과 판단 기준이 함께 어긋납니다.
-- 카카오 로컬 API(`dapi.kakao.com`)로 장소를 검색·검증합니다. `local.properties`에 `KAKAO_REST_API_KEY`가 없으면 검색 결과가 비고 모든 후보가 **검증 불가(UNVERIFIED)** 로 표기되어 정확도 지표가 0이 됩니다.
+- 카카오 로컬 API(`dapi.kakao.com`)로 장소를 검색·검증합니다. Functions 시크릿에 `KAKAO_REST_API_KEY`가 없으면 검색 결과가 비고 모든 후보가 **검증 불가(UNVERIFIED)** 로 표기됩니다. 이때 실존 확인율은 "판정 불가", 확인률은 0%로 표시됩니다 — 모델 성능 저하가 아니라 검증 경로가 끊긴 것입니다.
 
 ---
 
@@ -700,9 +707,9 @@ firebase deploy --only functions
 - [x] **상황 인식 분류** — 모임 목적을 9개 케이스로 온디바이스 판정 (밥/술/위로/축하/…)
 - [x] **거름망(정형화 게이트)** — 고정 9슬롯 블록 + 상대→절대 날짜 온디바이스 환산 + 결손 슬롯 명시
 - [x] **AHP 다기준 의사결정** — 상황별 쌍대비교 프리셋(CR 0.0022~0.0177) + 후보 가중합 랭킹
-- [x] **하네스 품질 지표 3종** — 정확도·할루시네이션율·적합도 분리 측정 + Room 영속
+- [x] **하네스 품질 지표 4종** — 실존 확인율·할루시네이션율·확인률·제약 준수율 분리 측정 + Room 영속
 - [x] **만족도 평점 + 판단 재학습** — 원인별 AHP 보정, CR 채택 게이트, 과보정 감쇠
-- [x] **추천 품질 리포트 화면** — 만족도·정확도 추이 그래프 + 임계선 + 표본 수 병기
+- [x] **추천 품질 리포트 화면** — 만족도·실존 확인율 추이 그래프 + 임계선 + 표본 수 병기
 - [x] 온디바이스 모델 다운로드 (Gemma + EmbeddingGemma·토크나이저, Range 이어받기)
 - [x] Firestore 기반 채팅·방 데이터 실시간 영구 저장
 - [x] Firebase Auth Google 로그인 / FCM 푸시 알림
