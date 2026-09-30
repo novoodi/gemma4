@@ -184,12 +184,12 @@ class MigrationRuntimeTest {
     }
 
     @Test
-    fun `v4에서 올라온 DB의 버전이 6이고 새 테이블을 쓸 수 있다`() {
+    fun `v4에서 올라온 DB의 버전이 최신이고 새 테이블을 쓸 수 있다`() {
         createLegacyDb(4)
 
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals("최종 버전", 6, sdb.version)
+        assertEquals("최종 버전", 7, sdb.version)
 
         // 새 테이블에 쓰고 읽기 — v6 신규 컬럼 포함
         sdb.execSQL(
@@ -222,7 +222,7 @@ class MigrationRuntimeTest {
 
         val db = openLikeProduction()
         val sdb = db.openHelper.readableDatabase
-        assertEquals(6, sdb.version)
+        assertEquals(7, sdb.version)
 
         sdb.query("SELECT `feedback`, `createdAt` FROM `feedback`").use {
             assertTrue("v5→v6에서 후기가 사라졌다", it.moveToFirst())
@@ -240,14 +240,42 @@ class MigrationRuntimeTest {
     }
 
     @Test
+    fun `v5에서 올라온 DB에 캘린더 일정을 저장할 수 있고 기존 후기는 유지된다`() {
+        createLegacyDb(5)
+
+        val db = openLikeProduction()
+        val sdb = db.openHelper.writableDatabase
+        assertEquals(7, sdb.version)
+
+        // v7 신규 테이블 — 방 일정(roomId 있음)과 직접 추가 일정(roomId NULL) 모두
+        sdb.execSQL(
+            "INSERT INTO `calendar_event` (`id`, `title`, `date`, `time`, `location`, `note`, `roomId`, " +
+                "`placeName`, `placeAddress`, `placeUrl`, `category`, `createdAt`) VALUES " +
+                "('e1', '저녁 모임', '2026-10-03', '19:00', '강남', '', 'room-1', '고깃집', '서울', 'http://p', '모임', 1), " +
+                "('e2', '과제 마감', '2026-10-05', '', '', '메모', NULL, '', '', '', '', 2)"
+        )
+        sdb.query("SELECT `id`, `roomId` FROM `calendar_event` ORDER BY `createdAt`").use {
+            assertEquals(2, it.count)
+            assertTrue(it.moveToFirst()); assertEquals("e1", it.getString(0))
+            assertTrue(it.moveToNext()); assertTrue("roomId NULL 허용", it.isNull(1))
+        }
+        sdb.query("SELECT `feedback` FROM `feedback`").use {
+            assertTrue("v6→v7에서 후기가 사라졌다", it.moveToFirst())
+            assertEquals(seedFeedback, it.getString(0))
+        }
+        db.close()
+    }
+
+    @Test
     fun `신규 설치 경로에서 모든 테이블이 생성된다`() {
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals(6, sdb.version)
+        assertEquals(7, sdb.version)
 
         val expected = setOf(
             "user_status", "feedback", "recommended_room",
             "meeting_summary", "harness_run", "ahp_judgment",
+            "calendar_event",
         )
         val found = mutableSetOf<String>()
         sdb.query("SELECT name FROM sqlite_master WHERE type='table'").use {
@@ -297,7 +325,7 @@ class MigrationRuntimeTest {
             .map { it.startVersion to it.endVersion }
             .toSet()
         assertNotNull(registered)
-        (4 until 6).forEach { v ->
+        (4 until 7).forEach { v ->
             assertTrue(
                 "v$v → v${v + 1} 마이그레이션이 등록돼 있지 않다 — 파괴적 폴백이 탄다",
                 registered.contains(v to v + 1)

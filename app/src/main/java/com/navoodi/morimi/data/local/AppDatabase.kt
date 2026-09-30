@@ -16,8 +16,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MeetingSummaryEntity::class,
         HarnessRunEntity::class,
         AhpJudgmentEntity::class,
+        CalendarEventEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -29,6 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun meetingSummaryDao(): MeetingSummaryDao
     abstract fun harnessRunDao(): HarnessRunDao
     abstract fun ahpJudgmentDao(): AhpJudgmentDao
+    abstract fun calendarEventDao(): CalendarEventDao
 
     companion object {
         @Volatile
@@ -95,6 +97,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v6→v7 (2026-09-30): calendar_event 테이블 추가.
+        // 그동안 캘린더 일정은 인메모리라 앱 재시작 시 사라졌다(README 주의사항).
+        // 기존 테이블은 건드리지 않는 순수 추가 — 후기·지표 데이터는 그대로 보존된다.
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `calendar_event` (" +
+                        "`id` TEXT NOT NULL, `title` TEXT NOT NULL, `date` TEXT NOT NULL, " +
+                        "`time` TEXT NOT NULL, `location` TEXT NOT NULL, `note` TEXT NOT NULL, " +
+                        "`roomId` TEXT, `placeName` TEXT NOT NULL, `placeAddress` TEXT NOT NULL, " +
+                        "`placeUrl` TEXT NOT NULL, `category` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))"
+                )
+            }
+        }
+
         /**
          * 앱이 실제로 등록하는 마이그레이션 목록.
          *
@@ -104,7 +122,7 @@ abstract class AppDatabase : RoomDatabase() {
          * (`MigrationRuntimeTest` 2026-09-23 S3)
          */
         fun productionMigrations(): Array<Migration> =
-            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
         fun getInstance(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {

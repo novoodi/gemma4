@@ -12,6 +12,7 @@ import com.navoodi.morimi.data.pipeline.GemmaOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.KeywordFallbackRetriever
 import com.navoodi.morimi.data.pipeline.MockOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
+import com.navoodi.morimi.data.repository.CalendarRepository
 import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.data.repository.FeedbackRepository
 import com.navoodi.morimi.data.repository.MetricsRepository
@@ -33,6 +34,12 @@ class MoimApp : Application() {
         applicationScope.launch {
             ChatRepository.hydrateSummaries(summaryRepository.loadAll())
         }
+        // 캘린더 일정 복원 + 이후 추가·삭제를 Room에 영속 (앱 재시작 후에도 유지)
+        CalendarRepository.attach(
+            database.calendarEventDao(),
+            applicationScope,
+            getSharedPreferences("calendar_prefs", MODE_PRIVATE),
+        )
     }
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
