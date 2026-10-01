@@ -11,5 +11,11 @@ data class RecommendedPlace(
     val address: String = "",
     val reason: String = "",    // Gemini 추천 이유 (장소명 뒤 — 이하)
     val placeUrl: String = "",  // 카카오맵 상세 링크
-    val verification: VerificationStatus = VerificationStatus.UNVERIFIED
-)
+    val verification: VerificationStatus = VerificationStatus.UNVERIFIED,
+    // 카카오 검색 결과의 좌표(WGS84). 매칭된 검색 결과가 없거나 좌표가 깨졌으면 null — 지도 핀에서 빠진다
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+) {
+    /** 지도에 찍을 수 있는 좌표. 둘 중 하나라도 없거나 범위 밖이면 null */
+    val geoPoint: GeoPoint? get() = GeoPoint.of(latitude, longitude)
+}

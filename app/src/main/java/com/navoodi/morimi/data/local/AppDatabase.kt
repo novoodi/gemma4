@@ -9,8 +9,16 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [UserStatusEntity::class, FeedbackEntity::class, RecommendedRoomEntity::class, MeetingSummaryEntity::class],
-    version = 4,
+    entities = [
+        UserStatusEntity::class,
+        FeedbackEntity::class,
+        RecommendedRoomEntity::class,
+        MeetingSummaryEntity::class,
+        HarnessRunEntity::class,
+        AhpJudgmentEntity::class,
+        CalendarEventEntity::class,
+    ],
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -20,6 +28,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun feedbackDao(): FeedbackDao
     abstract fun recommendedRoomDao(): RecommendedRoomDao
     abstract fun meetingSummaryDao(): MeetingSummaryDao
+    abstract fun harnessRunDao(): HarnessRunDao
+    abstract fun ahpJudgmentDao(): AhpJudgmentDao
+    abstract fun calendarEventDao(): CalendarEventDao
 
     companion object {
         @Volatile
@@ -37,6 +48,102 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v4→v5: 하네스 지표(harness_run)·학습된 AHP 판단(ahp_judgment) 테이블 추가,
+        // feedback에 5점 척도 rating 컬럼 추가(0 = 미평가).
+        // 후기·임베딩·지난 추천은 지우면 안 되는 실사용 데이터라 여기서도 명시적 마이그레이션.
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `harness_run` (" +
+                        "`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, " +
+                        "`roomId` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `context` TEXT NOT NULL, " +
+                        "`attempts` INTEGER NOT NULL, `accuracy` REAL NOT NULL, " +
+                        "`hallucinationRate` REAL NOT NULL, `constraintFitness` REAL NOT NULL, " +
+                        "`retryEfficiency` REAL NOT NULL, `placeCount` INTEGER NOT NULL, " +
+                        "`verifiedCount` INTEGER NOT NULL, `notFoundCount` INTEGER NOT NULL, " +
+                        "`unverifiedCount` INTEGER NOT NULL, `violationCount` INTEGER NOT NULL, " +
+                        "`consistencyRatio` REAL NOT NULL, `satisfaction` REAL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `ahp_judgment` (" +
+                        "`context` TEXT NOT NULL, `deltas` TEXT NOT NULL, `updatedAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`context`))"
+                )
+                db.execSQL("ALTER TABLE `feedback` ADD COLUMN `rating` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        // v5→v6 (2026-09-23): 지표를 비율이 아니라 **개수**로 보관하도록 컬럼 추가.
+        // 비율만 저장하면 정의가 바뀔 때 과거 행을 재계산할 수 없다(D1에서 실제로 분모가 바뀜).
+        // 또 제약 준수율의 분자·분모 단위를 '항목'으로 맞추기 위해 itemCount/violationItemCount를,
+        // 모델 원시 할루시네이션 집계를 위해 raw* 를 추가한다.
+        // feedback.createdAt은 후기 팝업 조건(C7)이 "최신 추천 이후 후기인가"를 판정하는 데 쓴다.
+        // MIGRATION_4_5는 건드리지 않는다 — v5 개발 빌드를 설치한 기기가 있으면 무결성 검사에서 깨진다.
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                listOf(
+                    "itemCount", "violationItemCount",
+                    "rawVerifiedCount", "rawNotFoundCount", "rawUnverifiedCount",
+                ).forEach { col ->
+                    db.execSQL("ALTER TABLE `harness_run` ADD COLUMN `$col` INTEGER NOT NULL DEFAULT 0")
+                }
+                db.execSQL("ALTER TABLE `feedback` ADD COLUMN `createdAt` INTEGER NOT NULL DEFAULT 0")
+                // 기존 후기는 date('YYYY-MM-DD')를 자정 기준 epoch ms로 환산해 채운다.
+                // 형식이 다른 행은 0으로 남고, 그런 방은 팝업 조건에서 폴백 경로를 탄다.
+                db.execSQL(
+                    "UPDATE `feedback` SET `createdAt` = CAST(strftime('%s', `date`) AS INTEGER) * 1000 " +
+                        "WHERE `createdAt` = 0 AND `date` LIKE '____-__-__'"
+                )
+            }
+        }
+
+        // v6→v7 (2026-09-30): calendar_event 테이블 추가.
+        // 그동안 캘린더 일정은 인메모리라 앱 재시작 시 사라졌다(README 주의사항).
+        // 기존 테이블은 건드리지 않는 순수 추가 — 후기·지표 데이터는 그대로 보존된다.
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `calendar_event` (" +
+                        "`id` TEXT NOT NULL, `title` TEXT NOT NULL, `date` TEXT NOT NULL, " +
+                        "`time` TEXT NOT NULL, `location` TEXT NOT NULL, `note` TEXT NOT NULL, " +
+                        "`roomId` TEXT, `placeName` TEXT NOT NULL, `placeAddress` TEXT NOT NULL, " +
+                        "`placeUrl` TEXT NOT NULL, `category` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))"
+                )
+            }
+        }
+
+        // v7→v8 (2026-10-01): user_status에 sourceMemberIds(프로필을 만든 멤버 uid) 추가.
+        // 나간 사람의 선호가 프로필에 남는 문제(DEFECT_TEST S2)를 막는 출처 기록이다.
+        // 기존 행은 ''(빈 목록 = 출처 미기록)로 채워지고 그대로 읽힌다 — 프로필 데이터는 보존된다.
+        // 빈 문자열은 Converters.fromList(emptyList())와 같은 값이다.
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_status` ADD COLUMN `sourceMemberIds` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        // v8→v9 (2026-10-01): feedback에 authorUid(작성자)·targetPlaces(대상 장소) 추가.
+        // 불만 후기의 장소를 다음 추천에서 결정론적으로 빼고(ComplaintGate), 나간 멤버의 불만은 무시하기 위함.
+        // 기존 행은 ''(미기록)로 채워진다 — 본문에 장소명이 있으면 언급 판정으로 여전히 반영된다.
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `feedback` ADD COLUMN `authorUid` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `feedback` ADD COLUMN `targetPlaces` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
+        /**
+         * 앱이 실제로 등록하는 마이그레이션 목록.
+         *
+         * [getInstance]와 **같은 배열을 쓴다.** 테스트가 자기만의 목록을 만들면
+         * 등록 누락을 영영 못 잡는데, `fallbackToDestructiveMigration()`이 켜져 있어
+         * 누락은 크래시가 아니라 **조용한 데이터 삭제**로 나타난다.
+         * (`MigrationRuntimeTest` 2026-09-23 S3)
+         */
+        fun productionMigrations(): Array<Migration> =
+            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+
         fun getInstance(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -44,7 +151,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "moim_database"
                 )
-                    .addMigrations(MIGRATION_3_4)
+                    .addMigrations(*productionMigrations())
                     // v1→v2: feedback 테이블 추가. 압축 상태(user_status)는 재생성되고
                     // 기존 후기는 로컬 데모 데이터라 파괴적 마이그레이션 허용 (DEVLOG 기록)
                     // — v3 미만에서 올라오는 경우에만 적용되는 레거시 폴백

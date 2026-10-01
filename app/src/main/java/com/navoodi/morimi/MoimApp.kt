@@ -12,11 +12,13 @@ import com.navoodi.morimi.data.pipeline.GemmaOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.KeywordFallbackRetriever
 import com.navoodi.morimi.data.pipeline.MockOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
+import com.navoodi.morimi.data.repository.CalendarRepository
 import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.data.repository.FeedbackRepository
+import com.navoodi.morimi.data.repository.MetricsRepository
 import com.navoodi.morimi.data.repository.SummaryRepository
 import com.navoodi.morimi.data.repository.UserStatusRepository
-import com.navoodi.morimi.service.AgentOrchestrator
+import com.navoodi.morimi.service.AssistantOrchestrator
 import com.navoodi.morimi.service.FcmService
 import com.navoodi.morimi.service.GuardrailService
 import com.navoodi.morimi.service.LlmService
@@ -32,6 +34,12 @@ class MoimApp : Application() {
         applicationScope.launch {
             ChatRepository.hydrateSummaries(summaryRepository.loadAll())
         }
+        // 캘린더 일정 복원 + 이후 추가·삭제를 Room에 영속 (앱 재시작 후에도 유지)
+        CalendarRepository.attach(
+            database.calendarEventDao(),
+            applicationScope,
+            getSharedPreferences("calendar_prefs", MODE_PRIVATE),
+        )
     }
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -47,6 +55,8 @@ class MoimApp : Application() {
     }
     val feedbackRepository: FeedbackRepository by lazy { FeedbackRepository(this) }
     val summaryRepository: SummaryRepository by lazy { SummaryRepository(this) }
+    // 하네스 지표 기록 + 상황별 AHP 판단 학습 (피드백 순환 고리의 영속 계층)
+    val metricsRepository: MetricsRepository by lazy { MetricsRepository(this) }
 
     // Phase 2: 온디바이스 상태 압축 파이프라인
     // lazy 대신 nullable backing field — 모델 다운로드 후 reinitializePipelines()로 재생성 가능
@@ -71,14 +81,15 @@ class MoimApp : Application() {
 
     // Phase 3: 오케스트레이터 + Guardrail 하네스
     val guardrailService: GuardrailService by lazy { GuardrailService() }
-    private var _agentOrchestrator: AgentOrchestrator? = null
-    val agentOrchestrator: AgentOrchestrator
+    private var _agentOrchestrator: AssistantOrchestrator? = null
+    val agentOrchestrator: AssistantOrchestrator
         get() = _agentOrchestrator ?: run {
             val llmPort = if (llmService.isModelAvailable) GemmaOnDeviceLlm(llmService) else MockOnDeviceLlm()
-            AgentOrchestrator(
+            AssistantOrchestrator(
                 guardrailService = guardrailService,
                 feedbackRetriever = feedbackRetriever,
                 onDeviceLlm = llmPort,
+                metricsRepository = metricsRepository,
             ).also { _agentOrchestrator = it }
         }
 

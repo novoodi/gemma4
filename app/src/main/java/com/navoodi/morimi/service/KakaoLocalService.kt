@@ -1,6 +1,8 @@
 package com.navoodi.morimi.service
 
 import android.util.Log
+import com.navoodi.morimi.data.model.GeoPoint
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class KakaoPlace(
@@ -10,6 +12,10 @@ data class KakaoPlace(
     val address: String,
     val roadAddress: String,
     val url: String,
+    /** 카카오 documents의 y. 빈 값·파싱 실패·범위 밖이면 null ([GeoPoint.fromKakao]) */
+    val latitude: Double? = null,
+    /** 카카오 documents의 x. 빈 값·파싱 실패·범위 밖이면 null */
+    val longitude: Double? = null,
 )
 
 /**
@@ -35,18 +41,7 @@ object KakaoLocalService {
     ): List<KakaoPlace> {
         if (query.isBlank()) return emptyList()
         return try {
-            val docs = search(query, size, categoryGroupCode).getJSONArray("documents")
-            (0 until docs.length()).map { i ->
-                val d = docs.getJSONObject(i)
-                KakaoPlace(
-                    name = d.optString("place_name"),
-                    category = d.optString("category_name"),
-                    phone = d.optString("phone"),
-                    address = d.optString("address_name"),
-                    roadAddress = d.optString("road_address_name"),
-                    url = d.optString("place_url"),
-                )
-            }
+            parseDocuments(search(query, size, categoryGroupCode).getJSONArray("documents"))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -56,23 +51,54 @@ object KakaoLocalService {
     }
 
     /**
-     * 장소 실존 여부를 3-상태로 반환한다.
-     * 정상 응답이면 OPEN(검색됨)/CLOSED(미검색), 프록시·업스트림 오류·예외는 UNKNOWN(검증 불가).
+     * Guardrail 실존 검증용 검색. "결과 없음"과 "오류"를 구분해 반환한다.
+     * - 정상 응답: [PlaceSearchResult.Found] (documents가 비어 있으면 빈 목록 = 결과 없음)
+     * - 프록시·업스트림 오류, 응답 형식 이상: [PlaceSearchResult.Failed] (→ UNKNOWN)
      *
-     * 과거에는 검증 불가 상황에서 true(OPEN)를 반환하는 fail-open이었으나,
-     * 이는 "검증하지 못한 것"을 "검증됨"으로 위장해 Guardrail 신뢰성을 훼손했다.
-     * 이제 검증 불가를 UNKNOWN으로 정직하게 노출한다.
+     * 실존 판정(이름·지역 일치)은 [PlaceMatcher]가 한다. 과거의 total_count > 0 판정은
+     * 지어낸 이름도 비슷한 가게가 검색되면 통과시켰다.
      */
-    suspend fun checkPlace(name: String): PlaceStatus {
-        if (name.isBlank()) return PlaceStatus.UNKNOWN
+    suspend fun searchForVerification(name: String, size: Int = VERIFY_SIZE): PlaceSearchResult {
+        if (name.isBlank()) return PlaceSearchResult.Failed("빈 검색어")
         return try {
-            val count = search(name, size = 1).getJSONObject("meta").optInt("total_count", 0)
-            if (count > 0) PlaceStatus.OPEN else PlaceStatus.CLOSED
+            val docs = search(name, size).optJSONArray("documents")
+                ?: return PlaceSearchResult.Failed("응답에 documents 없음")
+            PlaceSearchResult.Found(parseDocuments(docs))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.e(TAG, "checkPlace 오류 name=$name — 검증 불가(UNKNOWN)", e)
-            PlaceStatus.UNKNOWN
+            Log.e(TAG, "searchForVerification 오류 name=$name — 검증 불가(UNKNOWN)", e)
+            PlaceSearchResult.Failed(e.message ?: e.javaClass.simpleName)
         }
     }
+
+    /**
+     * 카카오 키워드 검색 documents → [KakaoPlace]. 객체가 아닌 원소는 건너뛰고,
+     * 좌표(x 경도, y 위도)는 [GeoPoint.fromKakao]로 검증해 실패하면 null로 둔다 — 좌표 하나가
+     * 깨졌다고 가게 정보 전체를 버리지 않는다. 순수 함수(JVM 단위 테스트 가능).
+     */
+    internal fun parseDocuments(docs: JSONArray): List<KakaoPlace> =
+        (0 until docs.length()).mapNotNull { i ->
+            val d = docs.optJSONObject(i) ?: return@mapNotNull null
+            val point = GeoPoint.fromKakao(d.optString("x"), d.optString("y"))
+            KakaoPlace(
+                name = d.optString("place_name"),
+                category = d.optString("category_name"),
+                phone = d.optString("phone"),
+                address = d.optString("address_name"),
+                roadAddress = d.optString("road_address_name"),
+                url = d.optString("place_url"),
+                latitude = point?.latitude,
+                longitude = point?.longitude,
+            )
+        }
+
+    /** 검증 시 받는 검색 결과 수 (카카오 키워드 검색 size 상한 15 이내) */
+    const val VERIFY_SIZE = 10
+}
+
+/** 실존 검증용 검색 결과 — "결과 없음"(빈 Found)과 "오류"(Failed)를 타입으로 구분한다. */
+sealed interface PlaceSearchResult {
+    data class Found(val places: List<KakaoPlace>) : PlaceSearchResult
+    data class Failed(val reason: String) : PlaceSearchResult
 }

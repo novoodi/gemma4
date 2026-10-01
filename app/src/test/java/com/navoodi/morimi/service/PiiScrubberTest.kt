@@ -39,9 +39,12 @@ class PiiScrubberTest {
     @Test
     fun `이름의 부분 문자열이 다른 단어에 포함돼도 과잉 소거하지 않는다`() {
         // "민수"가 명단에 없고 풀네임 "김민수"만 있을 때, "수민"·"민수동" 같은 것을 오소거하면 안 됨
-        val r = PiiScrubber.scrub("수민이는 민수동 카페를 좋아합니다.", knownNames = listOf("박수현"))
+        // 명단 대조만(2026-10 이전 동작): 아무것도 지우지 않는다
+        val r = PiiScrubber.scrub("수민이는 민수동 카페를 좋아합니다.", knownNames = listOf("박수현"), detectUnlisted = false)
         assertEquals("수민이는 민수동 카페를 좋아합니다.", r.text)
         assertEquals(0, r.redactions)
+        // 명단 밖 탐지 켜짐(기본): "수민이는"은 이름 형태(받침 이름 + 이 + 는)라 지우지만, 합성어 "민수동"은 남긴다
+        assertEquals("[이름]이는 민수동 카페를 좋아합니다.", PiiScrubber.scrub("수민이는 민수동 카페를 좋아합니다.", listOf("박수현")).text)
     }
 
     // ── 전화번호 ──────────────────────────────────────────────────────────────
@@ -128,5 +131,58 @@ class PiiScrubberTest {
         val r = PiiScrubber.scrub("차를 마시러 갑니다.", knownNames = listOf("차"))
         assertEquals("차를 마시러 갑니다.", r.text)
         assertEquals(0, r.redactions)
+    }
+
+    /**
+     * **호격 조사** — 채팅에서 이름을 부르는 가장 흔한 형태인데 조사 목록에 없었다.
+     * 2026-09-13 실기기 평가에서 명단 내 이름 미탐의 주원인이었다
+     * (`아` 77회, `야` 54회, `언(니)` 13, `형` 7, `쌤` 5 — `docs/eval/RESULTS.md`).
+     */
+    @Test
+    fun `이름을 부르는 형태도 마스킹한다`() {
+        val names = listOf("김민수", "박지영")
+        listOf(
+            "민수야 어디야",
+            "지영아 오늘 시간 돼?",
+            "고마워 민수야",
+            "지영언니 같이 가자",
+            "민수형 내일 봬요",
+            "지영쌤 안녕하세요",
+        ).forEach { text ->
+            val r = PiiScrubber.scrub(text, names)
+            assertFalse("이름이 남았다: [$text] -> [${r.text}]", r.text.contains("민수") || r.text.contains("지영"))
+        }
+    }
+
+    /**
+     * 호격 조사 아/야로 시작하는 합성어는 조사로 보지 않는다 — "지영아파트"·"민수야구단"처럼
+     * 이름 뒤에 한글이 더 이어지면 조사가 아니라 새 단어의 시작이다.
+     */
+    @Test
+    fun `아 야로 시작하는 합성어는 호격 조사로 오인해 소거하지 않는다`() {
+        val r = PiiScrubber.scrub(
+            "지영아파트 앞에서 민수야구단 사람들과 만나기로 했습니다.",
+            knownNames = listOf("김민수", "이지영"),
+        )
+        assertEquals("지영아파트 앞에서 민수야구단 사람들과 만나기로 했습니다.", r.text)
+        assertEquals(0, r.redactions)
+    }
+
+    @Test
+    fun `직함 호칭은 존칭 백스톱에서 마스킹하지 않는다`() {
+        // RESULTS.md 2026-09-13: 호칭 오탐 상위(교수님 18·팀장님 14·과장님 13·원장님 8·사모님 6·상무님 5)
+        val r = PiiScrubber.scrub(
+            "교수님과 팀장님, 과장님, 원장님, 사모님, 상무님이 참석합니다.",
+            knownNames = emptyList(),
+        )
+        assertEquals("교수님과 팀장님, 과장님, 원장님, 사모님, 상무님이 참석합니다.", r.text)
+        assertEquals(0, r.redactions)
+    }
+
+    /** 조사가 아닌 한글이 이어지는 합성어는 여전히 건드리지 않는다 — 기존 동작 회귀 확인. */
+    @Test
+    fun `조사가 아닌 글자가 이어지면 소거하지 않는다`() {
+        val r = PiiScrubber.scrub("민수동 주민센터", listOf("김민수"))
+        assertTrue("합성어를 오소거했다: [${r.text}]", r.text.contains("민수동"))
     }
 }

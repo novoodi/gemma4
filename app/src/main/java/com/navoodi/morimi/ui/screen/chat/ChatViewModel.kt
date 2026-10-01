@@ -9,19 +9,25 @@ import com.google.firebase.auth.FirebaseAuth
 import com.navoodi.morimi.MoimApp
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
+import com.navoodi.morimi.data.pipeline.CompressionPlanner
+import com.navoodi.morimi.data.pipeline.MemberScope
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
 import com.navoodi.morimi.data.repository.ChatRepository
-import com.navoodi.morimi.service.AgentEvent
-import com.navoodi.morimi.service.AgentEventTracker
-import com.navoodi.morimi.service.AgentOrchestrator
+import com.navoodi.morimi.data.repository.MetricsRepository.FeedbackTarget
+import com.navoodi.morimi.service.AssistantEvent
+import com.navoodi.morimi.service.AssistantEventTracker
+import com.navoodi.morimi.service.AssistantOrchestrator
 import com.navoodi.morimi.service.FcmService
 import com.navoodi.morimi.service.OrchestratorResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -40,7 +46,7 @@ sealed class LeaveState {
     data class Error(val message: String) : LeaveState()
 }
 
-data class AgentDebugEntry(val emoji: String, val label: String, val content: String)
+data class AssistantDebugEntry(val emoji: String, val label: String, val content: String)
 
 class ChatViewModel(
     application: Application,
@@ -51,18 +57,15 @@ class ChatViewModel(
     private val llmService = (application as MoimApp).llmService
     private val userStatusRepository = (application as MoimApp).userStatusRepository
     private val compressionPipeline: StatusCompressionPipeline = (application as MoimApp).compressionPipeline
-    private val agentOrchestrator: AgentOrchestrator = (application as MoimApp).agentOrchestrator
+    private val agentOrchestrator: AssistantOrchestrator = (application as MoimApp).agentOrchestrator
     private val feedbackRepository = (application as MoimApp).feedbackRepository
     private val summaryRepository = (application as MoimApp).summaryRepository
+    private val metricsRepository = (application as MoimApp).metricsRepository
     val roomId: String = checkNotNull(savedStateHandle["roomId"])
 
     companion object {
         private const val TAG = "ChatViewModel"
-        private const val COMPRESSION_TRIGGER_COUNT = 10
-
-        // 증분 압축 델타 창 — 트리거마다 넘길 최근 메시지 수. 트리거 간격(10)보다 약간 크게 잡아
-        // 스냅샷 지연으로 인한 누락을 겹침으로 방어(병합이 중복을 제거하므로 겹침은 무해).
-        private const val COMPRESSION_WINDOW_SIZE = 15
+        // 증분 압축 스케줄(트리거 개수·창 크기·따라잡기 상한)은 CompressionPlanner가 정한다
     }
 
     // 현재 로그인 uid — UI에서 isMe 판단에 사용
@@ -86,10 +89,24 @@ class ChatViewModel(
     private val _agentProgress = MutableStateFlow("")
     val agentProgress: StateFlow<String> = _agentProgress.asStateFlow()
 
-    private val _debugLog = MutableStateFlow<List<AgentDebugEntry>>(emptyList())
-    val debugLog: StateFlow<List<AgentDebugEntry>> = _debugLog.asStateFlow()
+    private val _debugLog = MutableStateFlow<List<AssistantDebugEntry>>(emptyList())
+    val debugLog: StateFlow<List<AssistantDebugEntry>> = _debugLog.asStateFlow()
 
     private var compressionJob: Job? = null
+
+    // 멤버 변화(이탈·재입장) 시 프로필 재구성 — 앱 스코프 백그라운드, 화면을 막지 않는다.
+    // 끝나기 전에는 오케스트레이터가 오래된 프로필을 쓰지 않는다(MemberScope.profileUsable).
+    private var rebuildJob: Job? = null
+    private var rebuildAttemptedFor: Set<String>? = null
+
+    // 압축이 끝난 메시지 id — 누가 보냈든, 압축 도중·늦게 도착했든 id가 없으면 다음 회차에 압축된다.
+    // 메인 스레드(viewModelScope)에서만 읽고 쓴다.
+    private val compressedIds = HashSet<String>()
+    private var compressedIdsLoaded = false
+
+    /** 현재 방 멤버 uid. 방 정보를 아직 못 받았으면 null(멤버 필터 없음 — 이전 동작) */
+    private val currentMemberIds: Set<String>?
+        get() = room.value?.participantUids?.toSet()?.takeIf { it.isNotEmpty() }
 
     // 백그라운드 성향 압축 진행 여부 — "스피너 없는" 플로팅 상태배지 표시용
     private val _isCompressing = MutableStateFlow(false)
@@ -98,6 +115,9 @@ class ChatViewModel(
     // 후기 팝업 — 추천받은 방 재진입 시, 아직 후기 미작성이면 노출 (RAG 데이터 확보)
     private val _showFeedbackPrompt = MutableStateFlow(false)
     val showFeedbackPrompt: StateFlow<Boolean> = _showFeedbackPrompt.asStateFlow()
+    private var pendingFeedbackTarget: FeedbackTarget? = null
+    private val _feedbackError = MutableStateFlow<String?>(null)
+    val feedbackError: StateFlow<String?> = _feedbackError.asStateFlow()
 
     // 이 방에 저장된(영속 복원 포함) 지난 추천이 있는지 — "지난 추천 보기" 진입점 노출 근거
     val hasSavedSummary: StateFlow<Boolean> = ChatRepository.summaries
@@ -106,7 +126,63 @@ class ChatViewModel(
 
     init {
         viewModelScope.launch {
-            if (feedbackRepository.shouldPromptFeedback(roomId)) _showFeedbackPrompt.value = true
+            try {
+                if (feedbackRepository.shouldPromptFeedback(roomId)) {
+                    pendingFeedbackTarget = metricsRepository.feedbackTargetFor(roomId)
+                    _showFeedbackPrompt.value = true
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "후기 대상 조회 실패", error)
+                _feedbackError.value = "후기 대상을 확인하지 못했습니다. 방에 다시 들어와 주세요."
+            }
+        }
+        // 메시지가 바뀔 때마다(내 전송·다른 사람 전송·늦은 도착 모두) 압축할 때가 됐는지 본다
+        viewModelScope.launch {
+            messages.collect { msgs ->
+                if (msgs.isEmpty()) return@collect
+                if (!compressedIdsLoaded) {
+                    val updatedAt = runCatching { userStatusRepository.getStatus(roomId)?.lastUpdated }.getOrNull()
+                    compressedIds += CompressionPlanner.initiallyCompressed(msgs, updatedAt)
+                    compressedIdsLoaded = true
+                }
+                maybeCompress()
+            }
+        }
+        // 멤버 목록(Firestore participantUids)이 바뀌면 프로필이 아직 유효한지 확인하고 필요하면 재구성
+        viewModelScope.launch {
+            combine(
+                room.map { it?.participantUids?.toSet()?.takeIf { ids -> ids.isNotEmpty() } }.distinctUntilChanged(),
+                messages,
+            ) { members, msgs -> members to msgs }
+                .collect { (members, msgs) ->
+                    if (members != null && msgs.isNotEmpty()) maybeRebuildProfile(members, msgs)
+                }
+        }
+    }
+
+    /**
+     * 나간 사람이 섞였거나(이탈) 빠진 멤버 발언이 있으면(재입장) 현재 멤버 대화로 프로필을 다시 만든다.
+     * 같은 멤버 구성에 대해서는 한 번만 시도한다 — 실패하면 프로필 없이 추천하고, 방에 다시 들어올 때 재시도.
+     */
+    private suspend fun maybeRebuildProfile(members: Set<String>, msgs: List<Message>) {
+        if (rebuildJob?.isActive == true || rebuildAttemptedFor == members) return
+        val status = runCatching { userStatusRepository.getStatus(roomId) }.getOrNull()
+        if (!MemberScope.needsRebuild(status, members, msgs.map { it.senderId }.toSet())) return
+        rebuildAttemptedFor = members
+        val appScope = getApplication<MoimApp>().applicationScope
+        rebuildJob = appScope.launch(Dispatchers.IO) {
+            val result = runCatching { compressionPipeline.rebuild(roomId, msgs, members) }
+                .onFailure { Log.e(TAG, "프로필 재구성 예외 — 프로필 없이 진행", it) }
+                .getOrNull()
+            Log.d(TAG, "프로필 재구성 roomId=$roomId 멤버 ${members.size}명 결과=$result")
+            if (result == StatusCompressionPipeline.RebuildResult.REBUILT ||
+                result == StatusCompressionPipeline.RebuildResult.EMPTY
+            ) {
+                // 재구성이 다룬 메시지는 다시 증분 압축하지 않는다(메인 스레드에서 표시)
+                kotlinx.coroutines.withContext(Dispatchers.Main) { compressedIds += msgs.map { it.id } }
+            }
         }
     }
 
@@ -115,13 +191,50 @@ class ChatViewModel(
      * 임베딩은 수십 초 걸리므로 **applicationScope**에서 실행한다 — 저장 직후 사용자가
      * 화면을 벗어나 ViewModel이 파괴돼도 임베딩이 취소되지 않고 끝까지 완료된다.
      */
-    fun submitFeedback(text: String) {
-        if (text.isBlank()) return
+    fun submitFeedback(text: String, rating: Int = 0) {
+        if (text.isBlank() || rating !in 0..5 || !_showFeedbackPrompt.value) return
+        val target = pendingFeedbackTarget
         _showFeedbackPrompt.value = false
-        getApplication<MoimApp>().applicationScope.launch { feedbackRepository.append(text, roomId) }
+        // 이 후기의 대상 장소와 작성자 — 불만이면 다음 추천에서 그 장소를 빼고(ComplaintGate),
+        // 작성자가 방을 나가면 반영하지 않는다
+        val decided = com.navoodi.morimi.data.repository.CalendarRepository.events.value
+            .filter { it.roomId == roomId && it.placeName.isNotBlank() }.map { it.placeName }
+        val recommended = ChatRepository.summaries.value[roomId]?.places?.map { it.name }.orEmpty()
+        val targets = com.navoodi.morimi.service.ComplaintGate.feedbackTargets(decided, recommended)
+        val author = currentUid.orEmpty()
+        getApplication<MoimApp>().applicationScope.launch {
+            try {
+                feedbackRepository.append(text, roomId, rating, authorUid = author, targetPlaces = targets)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e(TAG, "후기 저장 실패", error)
+                _feedbackError.value = "후기 저장을 완료하지 못했습니다. 저장 상태를 확인해 주세요."
+                return@launch
+            }
+            if (rating > 0 && target != null) {
+                try {
+                    // 임베딩 도중 새 추천이 생겨도 입력창을 열 때의 실행에만 연결한다.
+                    val learned = metricsRepository.attachSatisfaction(target, rating)
+                    if (learned != null) {
+                        Log.d(TAG, "만족도 $rating/5 반영 — 재학습 보정 ${learned.appliedDeltas.size}건")
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Log.e(TAG, "만족도 학습 저장 실패", error)
+                    _feedbackError.value = "후기는 저장됐지만 평점을 다음 추천에 반영하지 못했습니다."
+                }
+            }
+        }
     }
 
-    fun dismissFeedbackPrompt() { _showFeedbackPrompt.value = false }
+    fun dismissFeedbackPrompt() {
+        _showFeedbackPrompt.value = false
+        pendingFeedbackTarget = null
+    }
+
+    fun dismissFeedbackError() { _feedbackError.value = null }
 
     fun onInputChange(text: String) { _inputText.value = text }
 
@@ -130,23 +243,35 @@ class ChatViewModel(
         if (text.isBlank()) return
         _inputText.value = ""
         val senderName = auth.currentUser?.displayName ?: "나"
-        val preCount = messages.value.size
-        viewModelScope.launch {
-            ChatRepository.sendMessage(roomId, text, senderName)
-            if ((preCount + 1) % COMPRESSION_TRIGGER_COUNT == 0) {
-                // 누적 전체가 아닌 최근 델타만 압축에 넘긴다(컨텍스트 초과 방지) — 파이프라인이 직전 상태와 병합
-                triggerStatusCompression(messages.value.takeLast(COMPRESSION_WINDOW_SIZE))
-            }
-        }
+        // 압축은 여기서 트리거하지 않는다 — 전송된 메시지가 messages 흐름에 들어오면 maybeCompress가 본다
+        viewModelScope.launch { ChatRepository.sendMessage(roomId, text, senderName) }
     }
 
-    private fun triggerStatusCompression(msgs: List<Message>) {
-        compressionJob = viewModelScope.launch(Dispatchers.IO) {
+    /**
+     * 아직 압축되지 않은 메시지가 충분히 쌓였으면 백그라운드로 압축한다(동시에 한 회차만).
+     * 이번 회차가 다루는 id만 끝난 뒤 표시하므로, 압축 도중 도착한 메시지는 끝나고 바로 다음 회차에 잡힌다.
+     * 실패하면 표시하지 않는다 — 다음 메시지가 올 때 다시 시도(실패 즉시 재시도 루프 없음).
+     */
+    private fun maybeCompress(force: Boolean = false) {
+        if (compressionJob?.isActive == true || !compressedIdsLoaded) return
+        val plan = CompressionPlanner.plan(messages.value, compressedIds, force) ?: return
+        val members = currentMemberIds
+        compressionJob = viewModelScope.launch {
             _isCompressing.value = true
+            var ok = true
             try {
-                compressionPipeline.compress(roomId, msgs)
+                for (batch in plan.batches) {
+                    ok = compressionPipeline.compress(roomId, batch, members) && ok
+                }
             } finally {
                 _isCompressing.value = false
+            }
+            if (ok) {
+                compressedIds += plan.coveredIds
+                if (plan.skipped > 0) Log.w(TAG, "압축 따라잡기 상한 — 옛 메시지 ${plan.skipped}건 건너뜀")
+                maybeCompress() // 압축 중 도착한 메시지
+            } else {
+                Log.w(TAG, "압축 실패 — 다음 메시지 도착 시 재시도")
             }
         }
     }
@@ -164,15 +289,22 @@ class ChatViewModel(
         _summaryState.value = SummaryState.Loading
         _agentProgress.value = ""
         _debugLog.value = emptyList()
+        // 버튼을 누른 시점까지의 메시지는 10개가 안 쌓였어도 프로필에 반영한다(누락 방지)
+        maybeCompress(force = true)
         val appScope = getApplication<MoimApp>().applicationScope
         appScope.launch {
             try {
-                compressionJob?.join()
+                // 진행 중 압축(압축 중 도착분의 후속 회차 포함)이 끝날 때까지 기다린다
+                while (compressionJob?.isActive == true) compressionJob?.join()
 
                 val userStatus = userStatusRepository.getStatus(roomId)
-                Log.d(TAG, "orchestrate 시작 — roomId=$roomId userStatus=$userStatus")
+                // 재구성(rebuildJob)은 기다리지 않는다 — 끝나기 전 프로필은 오케스트레이터가 쓰지 않는다
+                val memberIds = currentMemberIds
+                    ?: runCatching { ChatRepository.getRoomById(roomId) }.getOrNull()
+                        ?.participantUids?.toSet()?.takeIf { it.isNotEmpty() }
+                Log.d(TAG, "orchestrate 시작 — roomId=$roomId 멤버=${memberIds?.size} userStatus=$userStatus")
 
-                _debugLog.value = _debugLog.value + AgentDebugEntry(
+                _debugLog.value = _debugLog.value + AssistantDebugEntry(
                     emoji = "👤",
                     label = "저장된 사용자 성향 (Gemini에 전달됨)",
                     content = buildString {
@@ -182,32 +314,83 @@ class ChatViewModel(
                     }
                 )
 
-                val tracker = object : AgentEventTracker {
-                    override fun onEvent(event: AgentEvent) {
+                val tracker = object : AssistantEventTracker {
+                    override fun onEvent(event: AssistantEvent) {
                         _agentProgress.value = when (event) {
-                            is AgentEvent.OrchestrationStarted  -> "대화 내용을 분석하고 있습니다..."
-                            is AgentEvent.GemmaSummaryCompleted -> "핵심 내용을 추출했습니다. 클라우드에 연결 중..."
-                            is AgentEvent.PromptGenerated       -> "AI에게 질문을 전달하고 있습니다... (시도 ${event.attempt})"
-                            is AgentEvent.ToolCalled            -> when (event.name) {
+                            is AssistantEvent.OrchestrationStarted  -> "대화 내용을 분석하고 있습니다..."
+                            is AssistantEvent.MembersScoped         -> "현재 멤버의 대화만 추렸습니다..."
+                            is AssistantEvent.ComplaintsApplied     -> "불만을 남긴 장소를 제외했습니다..."
+                            is AssistantEvent.ContextClassified     -> "모임 성격을 파악했습니다: ${event.label}"
+                            is AssistantEvent.CriteriaWeighted      -> "이 상황에 맞는 판단 기준을 세웠습니다..."
+                            is AssistantEvent.GemmaSummaryCompleted -> "핵심 내용을 추출했습니다. 클라우드에 연결 중..."
+                            is AssistantEvent.SieveNormalized       -> "요청을 정해진 형식으로 정리했습니다..."
+                            is AssistantEvent.PlacesRanked          -> "후보를 기준별로 비교하고 있습니다..."
+                            is AssistantEvent.MetricsRecorded       -> "결과 품질을 기록했습니다."
+                            is AssistantEvent.PromptGenerated       -> "AI에게 질문을 전달하고 있습니다... (시도 ${event.attempt})"
+                            is AssistantEvent.ToolCalled            -> when (event.name) {
                                 "getWeather"  -> "날씨를 확인하고 있습니다..."
                                 "searchPlace" -> "주변 장소를 검색하고 있습니다..."
                                 else          -> "정보를 수집하고 있습니다..."
                             }
-                            is AgentEvent.JsonParsed            -> "추천 결과를 정리하고 있습니다..."
-                            is AgentEvent.GuardrailEvaluated    -> if (event.passed)
+                            is AssistantEvent.JsonParsed            -> "추천 결과를 정리하고 있습니다..."
+                            is AssistantEvent.GuardrailEvaluated    -> if (event.passed)
                                 "추천 결과를 검증했습니다."
                             else
                                 "결과를 다듬고 있습니다... (시도 ${event.attempt})"
-                            is AgentEvent.ReflectionEvaluated   -> if (event.passed)
+                            is AssistantEvent.ReflectionEvaluated   -> if (event.passed)
                                 "취향 제약을 점검했습니다."
                             else
                                 "싫어하시는 요소를 발견해 다시 추천합니다... (시도 ${event.attempt})"
-                            is AgentEvent.OrchestrationFinished -> if (event.success) "완료!" else "분석을 마쳤습니다."
+                            is AssistantEvent.OrchestrationFinished -> if (event.success) "완료!" else "분석을 마쳤습니다."
                         }
 
-                        val entry: AgentDebugEntry? = when (event) {
-                            is AgentEvent.GemmaSummaryCompleted ->
-                                AgentDebugEntry("🤖", "Gemma 온디바이스 요약 (원문 미전송)", buildString {
+                        val entry: AssistantDebugEntry? = when (event) {
+                            is AssistantEvent.MembersScoped ->
+                                AssistantDebugEntry("👥", "현재 멤버 기준", buildString {
+                                    appendLine("멤버 ${event.memberCount}명 · 나간 사람 ${event.departedSenders}명의 메시지 ${event.droppedMessages}건 제외")
+                                    append(
+                                        if (event.profileUsed) "저장된 성향 사용"
+                                        else "저장된 성향 미사용 — 나간 멤버가 섞였을 수 있어 재구성 전까지 쓰지 않음"
+                                    )
+                                })
+                            is AssistantEvent.ContextClassified ->
+                                AssistantDebugEntry("🧭", "상황 분류 (온디바이스 — 원문은 기기 안에서만 읽음)", buildString {
+                                    appendLine("판정: ${event.label} (${event.context})")
+                                    appendLine("신뢰도: ${"%.1f".format(event.confidence * 100)}%")
+                                    if (event.signals.isNotEmpty()) appendLine("근거 키워드: ${event.signals.joinToString(", ")}")
+                                    append("차순위 후보: ${event.runnerUp ?: "없음"}")
+                                })
+                            is AssistantEvent.CriteriaWeighted ->
+                                AssistantDebugEntry("⚖️", "AHP 판단 기준 가중치 — ${event.context}", buildString {
+                                    event.weights.forEachIndexed { i, (label, w) ->
+                                        appendLine("${i + 1}. $label ${"%.1f".format(w * 100)}%")
+                                    }
+                                    appendLine("일관성 비율 CR=${"%.4f".format(event.cr)} (임계 0.10, ${if (event.consistent) "유효" else "기각"})")
+                                    append(
+                                        if (event.learnedDeltas > 0)
+                                            "지난 피드백 학습 반영 ${event.learnedDeltas}건" +
+                                                if (event.droppedDeltas > 0) " (일관성 위반으로 ${event.droppedDeltas}건 기각)" else ""
+                                        else "학습 보정 없음 — 상황 기본 가중치"
+                                    )
+                                })
+                            is AssistantEvent.SieveNormalized ->
+                                AssistantDebugEntry("🧱", "거름망 — 정형화된 요청 블록 (실제 전송분)", buildString {
+                                    append(event.frame)
+                                    if (event.missingSlots.isNotEmpty()) {
+                                        appendLine()
+                                        appendLine()
+                                        append("⚠ 미확정 슬롯 ${event.missingSlots.size}개: ${event.missingSlots.joinToString(", ")}")
+                                    }
+                                })
+                            is AssistantEvent.PlacesRanked ->
+                                AssistantDebugEntry("📐", "AHP 종합 랭킹 (시도 ${event.attempt})", buildString {
+                                    event.ranking.forEachIndexed { i, r -> appendLine("${i + 1}. $r") }
+                                    append(if (event.changed) "→ 기준 가중치에 따라 순서를 재배열함" else "→ 원래 순서 유지")
+                                })
+                            is AssistantEvent.MetricsRecorded ->
+                                AssistantDebugEntry("📈", "하네스 품질 지표", event.summary)
+                            is AssistantEvent.GemmaSummaryCompleted ->
+                                AssistantDebugEntry("🤖", "Gemma 온디바이스 요약 (원문 미전송)", buildString {
                                     append(event.summary)
                                     if (event.redactions > 0) {
                                         appendLine()
@@ -217,18 +400,18 @@ class ChatViewModel(
                                         append("🛡 PII 스크러버: 클라우드 전송 직전 ${event.redactions}건 마스킹 ($detail)")
                                     }
                                 })
-                            is AgentEvent.PromptGenerated ->
-                                AgentDebugEntry("📝", "Gemini 전달 프롬프트 (시도 ${event.attempt})", event.prompt)
-                            is AgentEvent.ToolCalled ->
-                                AgentDebugEntry("🔧", "도구 호출: ${event.name}", buildString {
+                            is AssistantEvent.PromptGenerated ->
+                                AssistantDebugEntry("📝", "Gemini 전달 프롬프트 (시도 ${event.attempt})", event.prompt)
+                            is AssistantEvent.ToolCalled ->
+                                AssistantDebugEntry("🔧", "도구 호출: ${event.name}", buildString {
                                     event.args.entries.forEach { (k, v) -> appendLine("▸ $k: $v") }
                                     appendLine()
                                     append("결과:\n${event.result}")
                                 })
-                            is AgentEvent.JsonParsed ->
-                                AgentDebugEntry("📊", "Gemini 응답 JSON", event.rawJson)
-                            is AgentEvent.GuardrailEvaluated ->
-                                AgentDebugEntry(
+                            is AssistantEvent.JsonParsed ->
+                                AssistantDebugEntry("📊", "Gemini 응답 JSON", event.rawJson)
+                            is AssistantEvent.GuardrailEvaluated ->
+                                AssistantDebugEntry(
                                     if (event.passed) "✅" else "❌",
                                     "Guardrail 검증 (시도 ${event.attempt})",
                                     buildString {
@@ -236,8 +419,8 @@ class ChatViewModel(
                                         if (event.unknownCount > 0) append("\n⚠ 검증 불가 ${event.unknownCount}건 (장소 API 응답 없음)")
                                     }
                                 )
-                            is AgentEvent.ReflectionEvaluated ->
-                                AgentDebugEntry(
+                            is AssistantEvent.ReflectionEvaluated ->
+                                AssistantDebugEntry(
                                     if (event.passed) "🪞" else "🚫",
                                     "Reflection 자기비평 (시도 ${event.attempt})",
                                     if (event.passed) "통과 — 사용자 제약(싫어요) 위반 없음"
@@ -253,7 +436,8 @@ class ChatViewModel(
                     roomId = roomId,
                     messages = msgs,
                     userStatus = userStatus,
-                    eventTracker = tracker
+                    eventTracker = tracker,
+                    memberIds = memberIds,
                 )) {
                     is OrchestratorResult.Success -> {
                         ChatRepository.saveSummary(result.summary)

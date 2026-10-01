@@ -1,6 +1,7 @@
 package com.navoodi.morimi.ui.screen.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -98,6 +99,7 @@ fun ChatScreen(
     val leaveState   by viewModel.leaveState.collectAsStateWithLifecycle()
     val isCompressing by viewModel.isCompressing.collectAsStateWithLifecycle()
     val showFeedbackPrompt by viewModel.showFeedbackPrompt.collectAsStateWithLifecycle()
+    val feedbackError by viewModel.feedbackError.collectAsStateWithLifecycle()
     val hasSavedSummary by viewModel.hasSavedSummary.collectAsStateWithLifecycle()
     val listState     = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
@@ -161,6 +163,15 @@ fun ChatScreen(
         FeedbackPromptDialog(
             onDismiss = viewModel::dismissFeedbackPrompt,
             onSubmit = viewModel::submitFeedback,
+        )
+    }
+
+    feedbackError?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::dismissFeedbackError,
+            title = { Text("후기 처리 오류") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::dismissFeedbackError) { Text("확인") } },
         )
     }
 
@@ -543,12 +554,16 @@ private fun sameMinute(t1: Long, t2: Long) = t1 / 60_000 == t2 / 60_000
 
 // ── 후기 팝업 ─────────────────────────────────────────────────────────────────
 // 추천받은 방 재진입 시 노출. 저장 시 온디바이스 임베딩 인덱싱 → 다음 추천 RAG에 반영.
+//
+// 자유 텍스트와 함께 5점 척도 만족도를 받는다. 텍스트만으로는 "좋았다/나빴다"를 기계적으로
+// 판정할 수 없어 만족도 추이도, AHP 판단 재학습도 불가능하기 때문이다(정량 신호 1개).
 @Composable
 private fun FeedbackPromptDialog(
     onDismiss: () -> Unit,
-    onSubmit: (String) -> Unit,
+    onSubmit: (String, Int) -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
+    var rating by remember { mutableIntStateOf(0) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -559,6 +574,24 @@ private fun FeedbackPromptDialog(
                     text = "후기를 남기면 다음 모임 추천이 더 정확해져요.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text("만족도", fontFamily = Pretendard, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(6.dp))
+                StarRatingRow(rating = rating, onRate = { rating = it })
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = when (rating) {
+                        0 -> "별을 눌러 평가해주세요 (선택)"
+                        1 -> "많이 아쉬웠어요"
+                        2 -> "아쉬웠어요"
+                        3 -> "보통이었어요"
+                        4 -> "만족했어요"
+                        else -> "아주 좋았어요"
+                    },
+                    fontFamily = Pretendard,
+                    fontSize = 12.sp,
+                    color = MoColors.textTertiary,
                 )
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
@@ -571,10 +604,29 @@ private fun FeedbackPromptDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onSubmit(text) }, enabled = text.isNotBlank()) { Text("저장") }
+            Button(onClick = { onSubmit(text, rating) }, enabled = text.isNotBlank()) { Text("저장") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("다음에") }
         },
     )
+}
+
+/** 5점 척도 별점 선택 — 같은 별을 다시 누르면 평가 취소(0). */
+@Composable
+private fun StarRatingRow(rating: Int, onRate: (Int) -> Unit) {
+    Row {
+        (1..5).forEach { star ->
+            val filled = star <= rating
+            Text(
+                text = if (filled) "★" else "☆",
+                fontSize = 30.sp,
+                color = if (filled) MoColors.brand else MoColors.textTertiary,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .clickable { onRate(if (rating == star) 0 else star) }
+                    .padding(horizontal = 4.dp),
+            )
+        }
+    }
 }

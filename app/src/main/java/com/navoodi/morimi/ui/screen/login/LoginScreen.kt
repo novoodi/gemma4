@@ -2,6 +2,8 @@ package com.navoodi.morimi.ui.screen.login
 
 import android.content.Context
 import android.util.Log
+import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,7 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -39,22 +45,10 @@ private const val TAG = "LoginScreen"
 
 
 
-private data class SocialBtn(
-    val label: String,
-    val bg: Color,
-    val textColor: Color,
-    val border: Color,
-    val initial: String,
-    val initBg: Color,
-    val initColor: Color,
-    val isGoogle: Boolean = false,
-)
-
-private val socialBtns = listOf(
-    SocialBtn("Google로 계속하기",  Color.White,       Color(0xFF3C4043), Color(0xFFDADCE0), "G", Color(0xFF4285F4), Color.White, isGoogle = true),
-    SocialBtn("카카오로 계속하기", Color(0xFFFEE500), Color(0xFF191919), Color(0xFFFEE500), "K", Color(0xFFFEE500), Color(0xFF191919)),
-    SocialBtn("네이버로 계속하기", Color(0xFF03C75A), Color.White,      Color(0xFF03C75A), "N", Color(0xFF03C75A), Color.White),
-)
+// 브랜드 컬러 — 블루 → 스카이블루 그라데이션 (워드마크)
+private val MorimiBlue = Color(0xFF1F4EF5)
+private val MorimiSky = Color(0xFF38BDF8)
+private val MorimiGradient = Brush.horizontalGradient(listOf(MorimiBlue, MorimiSky))
 
 @Composable
 fun LoginScreen(
@@ -96,14 +90,25 @@ fun LoginScreen(
         ) {
             Spacer(Modifier.weight(0.34f))
 
+            // morimi 워드마크 — 블루 → 스카이블루 그라데이션
             Text(
-                text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = MoColors.textPrimary, fontWeight = FontWeight.ExtraBold, fontSize = 48.sp, letterSpacing = (-2).sp)) { append("Talk") }
-                    withStyle(SpanStyle(color = MoColors.brand, fontWeight = FontWeight.ExtraBold, fontSize = 52.sp, letterSpacing = (-2).sp)) { append("+") }
-                }
+                text = "morimi",
+                style = TextStyle(
+                    brush = MorimiGradient,
+                    fontFamily = Pretendard,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 52.sp,
+                    letterSpacing = (-1.5).sp,
+                ),
             )
-            Spacer(Modifier.height(6.dp))
-            Text("함께하는 대화, 더 스마트하게", color = MoColors.textTertiary, fontSize = 13.sp, letterSpacing = 0.2.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "당신을 위한 모임 알리미",
+                fontFamily = Pretendard,
+                color = MoColors.textTertiary,
+                fontSize = 14.sp,
+                letterSpacing = 0.2.sp,
+            )
 
             Spacer(Modifier.weight(0.08f))
 
@@ -113,20 +118,28 @@ fun LoginScreen(
                     .padding(horizontal = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                socialBtns.forEach { btn ->
-                    SocialButton(
-                        btn = btn,
-                        enabled = !isLoading,
-                        onClick = if (btn.isGoogle) {
-                            {
-                                Log.d(TAG, "▶ [0] Google 버튼 클릭됨")
-                                scope.launch { launchGoogleSignIn(context, authViewModel) }
-                            }
-                        } else {
-                            { }
-                        },
-                    )
-                }
+                // 순서: Google → 카카오 → 네이버 (각 사 공식 가이드 버튼 이미지 사용)
+                GoogleLoginButton(
+                    enabled = !isLoading,
+                    onClick = {
+                        Log.d(TAG, "▶ [0] Google 버튼 클릭됨")
+                        scope.launch { launchGoogleSignIn(context, authViewModel) }
+                    },
+                )
+                BrandImageButton(
+                    resId = R.drawable.btn_kakao_login_wide,
+                    description = "카카오 로그인",
+                    aspectRatio = 600f / 90f,
+                    enabled = !isLoading,
+                    onClick = { Toast.makeText(context, "카카오 로그인은 준비 중입니다", Toast.LENGTH_SHORT).show() },
+                )
+                BrandImageButton(
+                    resId = R.drawable.btn_naver_login_wide,
+                    description = "네이버 로그인",
+                    aspectRatio = 1472f / 192f,
+                    enabled = !isLoading,
+                    onClick = { Toast.makeText(context, "네이버 로그인은 준비 중입니다", Toast.LENGTH_SHORT).show() },
+                )
             }
 
             if (isLoading) {
@@ -213,33 +226,55 @@ private suspend fun launchGoogleSignIn(context: Context, authViewModel: AuthView
     }
 }
 
+/** Google 공식 G 로고 + 한글 문구 (Google 브랜드 가이드: 흰 배경, 회색 테두리) */
 @Composable
-private fun SocialButton(btn: SocialBtn, enabled: Boolean, onClick: () -> Unit) {
+private fun GoogleLoginButton(enabled: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(50.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(btn.bg.copy(alpha = if (enabled) 1f else 0.5f))
-            .border(1.5.dp, btn.border, RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = if (enabled) 1f else 0.5f))
+            .border(1.dp, Color(0xFFDADCE0), RoundedCornerShape(12.dp))
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(20.dp)
-                    .clip(CircleShape)
-                    .background(btn.initBg),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(btn.initial, color = btn.initColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(btn.label, color = btn.textColor, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        }
+        Image(
+            painter = painterResource(R.drawable.ic_google_logo),
+            contentDescription = null,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(start = 18.dp)
+                .size(20.dp),
+        )
+        Text(
+            "Google 로그인",
+            fontFamily = Pretendard,
+            color = Color(0xFF1F1F1F),
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
+}
+
+/** 카카오·네이버 공식 와이드 버튼 이미지 — 원본 비율을 유지해 왜곡 없이 표시 */
+@Composable
+private fun BrandImageButton(
+    resId: Int,
+    description: String,
+    aspectRatio: Float,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Image(
+        painter = painterResource(resId),
+        contentDescription = description,
+        contentScale = ContentScale.Fit,
+        alpha = if (enabled) 1f else 0.5f,
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick),
+    )
 }
