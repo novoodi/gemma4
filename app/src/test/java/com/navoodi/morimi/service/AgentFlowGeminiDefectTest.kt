@@ -7,7 +7,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -53,7 +52,6 @@ class AgentFlowGeminiDefectTest {
         assertFalse(r.guardrails.first().feedback.contains("존재하지 않는"))
     }
 
-    @Ignore("결함: 도구 호출 없이 응답하면 Guardrail city가 '미정'이라 다른 지역 가게 통과 — 대화 지역 슬롯(강남)을 쓰지 않음")
     @Test
     fun `S6-4 비정상 - 도구 호출 없이 다른 지역 가게를 줘도 대화의 지역(강남)으로 걸러야 한다`() {
         val gemini = ScriptedGemini.of(Gem.final(listOf("해운대횟집")), Gem.final(listOf("미미식당")))
@@ -94,7 +92,6 @@ class AgentFlowGeminiDefectTest {
         assertTrue("추천 0곳이 성공 처리됨: ${r.result}", r.success == null || r.places.isNotEmpty())
     }
 
-    @Ignore("결함: Reflection만 실패한 폴백이 있어도 마지막 시도 예외 시 Failed 반환 — catch 분기가 fallbackSuccess를 보지 않음")
     @Test
     fun `S6-10 근접 오류 - Reflection만 실패한 폴백이 있으면 마지막 시도 예외로 잃지 않는다`() {
         val status = UserStatusEntity(AgentFlow.ROOM, preferences = listOf("싫어요: 시끄러운 곳"))
@@ -159,14 +156,12 @@ class AgentFlowGeminiDefectTest {
         assertEquals(3 * 9, r.gemini.requests.size) // 시도당 최초 1 + 도구 왕복 8
     }
 
-    @Ignore("결함: ASCII 하이픈 구분('이름 - 이유') 시 이유가 장소명에 붙어 저장됨 — parseGeminiPlaceEntry")
     @Test
     fun `S6-17 근접 오류 - 이름과 이유를 ASCII 하이픈으로 구분해도 장소명만 남아야 한다`() {
         val r = AgentFlow.run(dinner, ScriptedGemini.of(Gem.final(listOf("미미식당 - 조용하고 맛있음"))))
         assertEquals("미미식당", r.placeNames.single())
     }
 
-    @Ignore("결함: 장소 배열에 비문자열 원소 하나만 있어도 시도 전체가 예외로 폐기 — stringList가 getString 사용")
     @Test
     fun `S6-18 이상 - 장소 배열에 문자열이 아닌 원소가 섞여도 나머지는 살린다`() {
         val body = JSONObject()

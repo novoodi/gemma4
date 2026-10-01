@@ -26,7 +26,6 @@ class AgentFlowInputFeedbackDefectTest {
 
     // ═══ 시나리오 4 — 이상 입력 ═══════════════════════════════════════════════
 
-    @Ignore("결함: 빈 대화에도 Gemini를 3회까지 호출하고 성공을 반환 — 오케스트레이터 입력 검증 없음(UI만 막음)")
     @Test
     fun `S4-1 이상 - 빈 대화는 클라우드 호출 없이 실패해야 한다`() {
         val r = AgentFlow.run(emptyList(), okGemini)
@@ -80,7 +79,6 @@ class AgentFlowInputFeedbackDefectTest {
         assertNotNull(r.success)
     }
 
-    @Ignore("결함: 긴 대화 전체(약 3.5만 자)를 온디바이스 요약에 그대로 전달 — 윈도우·청크 처리 없음(Gemma 컨텍스트 초과 위험, 실기기 확인 필요)")
     @Test
     fun `S4-7 이상 - 아주 긴 대화는 온디바이스 요약 입력이 컨텍스트 한도 안으로 잘려야 한다`() {
         val msgs = (1..2000).map { i -> msg(if (i % 2 == 0) "김민수" else "이지영", "토요일 강남 저녁 얘기 $i", i.toLong()) }
@@ -101,7 +99,6 @@ class AgentFlowInputFeedbackDefectTest {
         assertTrue(r.slot("일시").startsWith("2026-10-04"))
     }
 
-    @Ignore("결함: 지역 철회('강남은 좀 별로야')가 대안 없이 끝나면 이전 메시지의 강남으로 되돌아감 — lastMention이 부정된 메시지를 건너뜀")
     @Test
     fun `S4-9 근접 오류 - 지역을 철회만 하고 대안이 없으면 지역은 미정이어야 한다`() {
         val msgs = listOf(

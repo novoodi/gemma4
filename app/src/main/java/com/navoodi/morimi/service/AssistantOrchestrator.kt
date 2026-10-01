@@ -9,6 +9,7 @@ import com.navoodi.morimi.data.model.VerificationStatus
 import com.navoodi.morimi.data.pipeline.FeedbackRetriever
 import com.navoodi.morimi.data.pipeline.MemberScope
 import com.navoodi.morimi.data.pipeline.MessageOrder
+import com.navoodi.morimi.data.pipeline.SummaryInputWindow
 import com.navoodi.morimi.data.pipeline.OnDeviceLlmPort
 import com.navoodi.morimi.data.repository.MetricsRepository
 import org.json.JSONArray
@@ -131,6 +132,21 @@ class AssistantOrchestrator(
          * 이름이 맞으면 주소·지도 링크·좌표를 채운다(좌표는 지도 핀용 — 깨진 값은 KakaoPlace에서 이미 null).
          * internal — JVM 단위 테스트에서 직접 검증.
          */
+        /**
+         * Guardrail 지역 검사에 쓸 도시(S6-4). 모델이 도구(getWeather·searchPlace)를 부르지 않으면
+         * 도구 인자에서 온 도시가 "미정"이라 지역 검사가 통째로 생략됐다 — 그때는 대화에서 추출한
+         * 지역 슬롯을 쓴다. 도구가 도시를 알려 줬으면 그쪽이 우선(기존 동작 유지). 둘 다 없으면 "미정".
+         * 화면에 보이는 모임 장소(MeetingSummary.location)는 바꾸지 않는다 — 검증에만 쓴다.
+         */
+        internal fun guardrailCity(toolCity: String, sieveWhere: String): String {
+            fun known(v: String) = v.isNotBlank() && v.trim() != SievedPrompt.UNSPECIFIED
+            return when {
+                known(toolCity) -> toolCity
+                known(sieveWhere) -> sieveWhere.trim()
+                else -> SievedPrompt.UNSPECIFIED
+            }
+        }
+
         internal fun toRecommendedPlace(
             geminiStr: String,
             kakaoPlaces: List<KakaoPlace>,
@@ -166,17 +182,27 @@ class AssistantOrchestrator(
             longitude = k.longitude,
         )
 
-        private fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
+        internal fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
             // 장소명 = 주소 괄호'(' 또는 이유 구분 대시(—/–) 중 가장 먼저 나오는 지점 이전.
-            // ASCII '-'는 주소("상계로1길 14-11")·전화번호에 흔하므로 구분자로 쓰지 않는다.
+            // 붙여 쓴 ASCII '-'는 주소("상계로1길 14-11")·전화번호에 흔하므로 구분자로 쓰지 않는다.
             val nameEnd = listOf(s.indexOf('('), s.indexOf('—'), s.indexOf('–'))
                 .filter { it >= 0 }
                 .minOrNull() ?: s.length
-            val name = s.substring(0, nameEnd).trim()
-            // 이유 = em/en 대시 뒤 (없으면 빈 문자열)
+            val legacyName = s.substring(0, nameEnd).trim().ifBlank { s.trim() }
+            // 그다음 Guardrail과 같은 규칙(PlaceMatcher.placeNameOf)으로 한 번 더 자른다(S6-17) —
+            // 모델이 "미미식당 - 조용해서 좋음"처럼 공백 둘러싼 하이픈·콜론·세로선으로 이유를 붙이면
+            // 예전엔 이유까지 장소명으로 저장됐다. 저장·Guardrail 검증·검증 결과 매칭·지도 매칭이
+            // 모두 이 이름 하나를 쓰므로 서로 어긋나지 않는다.
+            val name = PlaceMatcher.placeNameOf(legacyName)
+            // 이유 = em/en 대시 뒤, 없으면 위에서 잘린 구분자 뒤(없으면 빈 문자열)
             val dashIdx = s.indexOfFirst { it == '—' || it == '–' }
-            val reason = if (dashIdx >= 0) s.substring(dashIdx + 1).trim() else ""
-            return (name.ifBlank { s.trim() }) to reason
+            val reason = when {
+                dashIdx >= 0 -> s.substring(dashIdx + 1).trim()
+                name.length < legacyName.length ->
+                    legacyName.substring(name.length).trimStart().trimStart('-', ':', '|', '―').trim()
+                else -> ""
+            }
+            return name to reason
         }
 
         /**
@@ -292,6 +318,13 @@ class AssistantOrchestrator(
                 return@withContext OrchestratorResult.Failed(reason, 0)
             }
         }
+        // 입력 검증(S4-1) — 내용 있는 메시지가 하나도 없으면(빈 목록·공백뿐) 요약·클라우드 호출 없이 실패.
+        // 화면(ChatViewModel)도 빈 대화를 막지만, 오케스트레이터는 호출 경로와 무관하게 스스로 막는다.
+        if (scoped.none { it.content.isNotBlank() }) {
+            val reason = "대화 내용이 없습니다"
+            eventTracker?.onEvent(AssistantEvent.OrchestrationFinished(false, 0, reason))
+            return@withContext OrchestratorResult.Failed(reason, 0)
+        }
 
         // ① 상황 판정 — 원문을 읽지만 **기기 안에서만** 읽는다. 밖으로 나가는 건 상황 라벨 하나.
         //    밥 약속과 술 약속을 같은 요청으로 취급하지 않기 위한 첫 분기점이다.
@@ -326,7 +359,17 @@ class AssistantOrchestrator(
 
         // 채팅 원문은 온디바이스에서 익명화 — 이 결과만 클라우드로 전송
         Log.d(TAG, "Gemma 1차 요약 시작 (온디바이스)")
-        val gemmaSum = onDeviceLlm.summarizeForPrivacy(scoped)
+        // 긴 대화는 요약 입력만 컨텍스트 한도 안으로 줄인다(앞부분 + 최근, 가운데 "…중략…") — S4-7.
+        // 날짜·지역·인원 추출과 상황 분류는 위에서 대화 전체(scoped)를 그대로 쓴다.
+        val summaryInput = SummaryInputWindow.fit(scoped)
+        if (summaryInput.truncated) {
+            Log.w(
+                TAG,
+                "요약 입력 축소: 원래 ${summaryInput.originalChars}자(${scoped.size}건) → " +
+                    "${summaryInput.keptChars}자(앞 ${summaryInput.headCount}건 + 최근 ${summaryInput.tailCount}건)",
+            )
+        }
+        val gemmaSum = onDeviceLlm.summarizeForPrivacy(summaryInput.messages)
         Log.d(TAG, "Gemma 요약 완료: ${gemmaSum.take(80)}")
 
         // 프라이버시 방화벽 최종 게이트 — Gemma가 지시를 어기고 이름/연락처를 흘리더라도
@@ -428,7 +471,7 @@ class AssistantOrchestrator(
                 // 검증 1 — Guardrail: 추천 장소가 실제로 존재/영업하는가 (하드 게이트)
                 val guardrail = guardrailService.verify(
                     placeNames = proposed.places.map { it.name },
-                    city = callResult.city
+                    city = guardrailCity(callResult.city, sieved.slot(FrameSlot.WHERE)),
                 )
                 val unknownCount = guardrail.verifiedPlaces.count { it.status == PlaceStatus.UNKNOWN }
                 Log.d(TAG, "시도 $attempt Guardrail: passed=${guardrail.passed} unknown=$unknownCount")
@@ -508,7 +551,9 @@ class AssistantOrchestrator(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "시도 $attempt 예외", e)
-                if (attempt >= MAX_ATTEMPTS) {
+                // 마지막 시도가 예외여도 앞서 보존한 최선의 결과(Guardrail 통과·Reflection만 미충족)가
+                // 있으면 루프를 빠져나가 아래 폴백 경로로 성공 처리한다(S6-10). 없을 때만 예외로 실패.
+                if (attempt >= MAX_ATTEMPTS && fallbackSuccess == null) {
                     val reason = "예외: ${e.message}"
                     eventTracker?.onEvent(AssistantEvent.OrchestrationFinished(false, attempt, reason))
                     return@withContext OrchestratorResult.Failed(reason, attempt)
@@ -620,9 +665,13 @@ class AssistantOrchestrator(
             throw IllegalStateException("구조화된 응답 파싱 실패: ${e.message}")
         }
 
+        // 문자열 원소만 살리고 이상한 원소(숫자·객체·null·빈 문자열)는 버린다(S6-18).
+        // 예전에는 getString이 원소 하나에서 예외를 던져 응답 전체가 폐기·재시도됐다.
         fun JSONObject.stringList(key: String): List<String> {
             val arr = optJSONArray(key) ?: return emptyList()
-            return (0 until arr.length()).map { arr.getString(it) }
+            val out = (0 until arr.length()).mapNotNull { i -> (arr.opt(i) as? String)?.trim()?.takeIf { it.isNotEmpty() } }
+            if (out.size != arr.length()) Log.w(TAG, "'$key' 원소 ${arr.length() - out.size}건이 문자열이 아니거나 비어 있어 버림")
+            return out
         }
 
         val summaryText       = json.optString("summary", "요약 없음")

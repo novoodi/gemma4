@@ -155,7 +155,7 @@ object PromptSieve {
             ?.let { slots[FrameSlot.TIME_OF_DAY] = it }
         // 사람 이름은 지역 후보에서 뺀다 — "강민구"(발신자·대화 속 이름)가 "…구" 패턴으로 지역이 되던 문제
         val personNames = personNamesOf(messages, userStatus)
-        lastMention(messages, safeSummary) { extractArea(it, personNames) }
+        lastArea(messages, safeSummary, personNames)
             ?.let { slots[FrameSlot.WHERE] = it }
         lastMention(messages, safeSummary) { extractBudget(it) }
             ?.let { slots[FrameSlot.BUDGET] = it }
@@ -391,7 +391,14 @@ object PromptSieve {
      * 지역 슬롯 값은 정형 블록·검색어로 클라우드에 나가므로, 이름이 지역으로 둔갑하면 오추천과
      * 함께 이름 누출 경로가 된다.
      */
-    internal fun extractArea(text: String, personNames: Set<String> = emptySet()): String? {
+    internal fun extractArea(text: String, personNames: Set<String> = emptySet()): String? =
+        // 전부 부정됐으면 문장이 지역을 말하지 않은 것으로 본다(억지로 고르지 않는다)
+        areaHits(text, personNames).filterNot { it.negated }.maxByOrNull { it.at }?.name
+
+    /** 문장의 지역 후보(위치·부정 여부 포함). [extractArea]와 [lastArea]가 같은 후보를 본다. */
+    internal data class AreaHit(val at: Int, val name: String, val negated: Boolean)
+
+    internal fun areaHits(text: String, personNames: Set<String> = emptySet()): List<AreaHit> {
         data class Hit(val at: Int, val name: String)
         val hits = ArrayList<Hit>()
 
@@ -414,11 +421,32 @@ object PromptSieve {
                 }
             }
         }
-        if (hits.isEmpty()) return null
+        return hits.map { AreaHit(it.at, it.name, KoTextMatch.isNegatedAfter(text, it.at + it.name.length)) }
+    }
 
-        val surviving = hits.filterNot { KoTextMatch.isNegatedAfter(text, it.at + it.name.length) }
-        // 전부 부정됐으면 문장이 지역을 말하지 않은 것으로 본다(억지로 고르지 않는다)
-        return surviving.maxByOrNull { it.at }?.name
+    /**
+     * 대화의 지역 슬롯 — 마지막 언급이 이기되, **나중에 철회된 지역은 건너뛴다**(S4-9).
+     *
+     * 예전에는 철회 문장("강남은 좀 별로야")에서 지역이 안 나오면 그 앞 메시지의 "강남"으로 되돌아갔다.
+     * 이제 뒤에서 앞으로 훑으며 부정된 지역을 모아 두고, 그보다 앞에서 나온 같은 지역은 버린다.
+     * 다른 지역을 철회한 경우("강남 가자" → "홍대는 별로")는 강남이 그대로 남는다(기존 동작).
+     * 철회된 지역이 요약문에 다시 나와도 쓰지 않는다. 남는 게 없으면 null(지역 미정).
+     */
+    internal fun lastArea(messages: List<Message>, safeSummary: String, personNames: Set<String>): String? {
+        val retracted = HashSet<String>()
+        fun pick(text: String): String? {
+            val hits = areaHits(text, personNames)
+            // 같은 문장 안에서도 뒤에서 철회된 지역("강남 가자… 아 강남은 별로")은 건너뛴다
+            val chosen = hits.filter { h ->
+                !h.negated && h.name !in retracted && hits.none { it.negated && it.name == h.name && it.at > h.at }
+            }.maxByOrNull { it.at }?.name
+            retracted += hits.filter { it.negated }.map { it.name }
+            return chosen
+        }
+        for (i in messages.indices.reversed()) {
+            pick(messages[i].content)?.let { return it }
+        }
+        return safeSummary.takeIf { it.isNotBlank() }?.let { pick(it) }
     }
 
     /**

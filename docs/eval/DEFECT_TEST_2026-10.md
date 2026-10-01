@@ -41,6 +41,7 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 - **수정 현황(퇴장자)**: S2-1·S2-2·S2-3·S2-4·S2-6 + S1-5(동명이인 인원) 수정 완료, `@Ignore` 해제 후 통과 → 남은 `@Ignore` **16건**(결함 14 + 한계 2)
 - **수정 현황(순서·동시 입력)**: S3-1·S3-2·S3-5 수정 완료, `@Ignore` 해제 후 통과 → 남은 `@Ignore` **13건**(결함 11 + 한계 2)
 - **수정 현황(불만 피드백)**: S5-2·S5-3·S5-4·S5-8 수정 완료, `@Ignore` 해제 후 통과 → 남은 `@Ignore` **9건**(결함 7 + 한계 2)
+- **수정 현황(남은 결함 7건)**: S4-1·S6-18·S6-17·S6-10·S6-4·S4-9·S4-7 수정 완료, `@Ignore` 해제 후 통과 → 남은 `@Ignore` **2건**(결함 0 + 한계 2: S4-3, S5-6). S4-7은 실기기 메모리 확인 필요
 
 ## 결과 표
 
@@ -87,15 +88,15 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 
 | 시나리오 | 케이스 | 기대 결과 | 실제 결과 | 결함 여부 | 원인 파일 | 담당 |
 |---|---|---|---|---|---|---|
-| S4-1 이상 | 빈 대화(메시지 0건) | 클라우드 호출 없이 Failed | **Gemini 호출 후 Success**(UI에서만 막음) | **결함** | `AssistantOrchestrator.orchestrate` (입력 검증 없음) | 최예인 |
+| S4-1 이상 | 빈 대화(메시지 0건) | 클라우드 호출 없이 Failed | **Gemini 호출 후 Success**(UI에서만 막음) → 수정 후: 호출 없이 Failed("대화 내용이 없습니다") | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator.orchestrate` (입력 검증 없음) | 최예인 |
 | S4-2 이상 | 이모지만 | 일시·지역 "미정", 미확정 슬롯 표기, 진행 | 기대대로 | 통과 | — | — |
 | S4-3 이상 | 영어만("Saturday in Gangnam") | 요일 인식(10-03) | **"미정"** | **한계** | `PromptSieve` (한국어 전용 추출기) | 최예인 |
 | S4-4 경계 | 장소 언급 없음 | 지역 미정, 검색어에 "null"·"미정" 없음 | 기대대로 | 통과 | — | — |
 | S4-5 정상 | 지역 "미정" + 부산 가게 추천 | 지역 검사 생략 → VERIFIED | 기대대로 | 통과 | — | — |
 | S4-6 이상 | 2000건 대화 | 끝까지 처리 | 기대대로 | 통과 | — | — |
-| S4-7 이상 | 2000건 대화의 요약 입력 크기 | 요약기 입력이 컨텍스트 한도(~8k) 이내 | **34,893자 전체 전달**(윈도우·청크 없음). 실기기 OOM·잘림 여부 확인 필요 | **결함** | `AssistantOrchestrator` → `LlmService.summarizeForPrivacy` | 최예인 |
+| S4-7 이상 | 2000건 대화의 요약 입력 크기 | 요약기 입력이 컨텍스트 한도(~8k) 이내 | **34,893자 전체 전달**(윈도우·청크 없음). 실기기 OOM·잘림 여부 확인 필요 → 수정 후: 앞 1,200자 + 최근 메시지로 6,000자 이내, 가운데 "…중략…" (**실기기 메모리 확인 필요**) | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator` → `LlmService.summarizeForPrivacy` | 최예인 |
 | S4-8 정상 | "토요일 홍대" → "홍대 말고 강남, 일요일로" | 강남 · 10-04 | 기대대로 | 통과 | — | — |
-| S4-9 근접 | "강남 가자" → "강남은 좀 별로야"(대안 없음) | 지역 미정 | **강남** — 철회 메시지를 건너뛰고 이전 언급으로 복귀 | **결함** | `PromptSieve.lastMention`/`extractArea` | 최예인 |
+| S4-9 근접 | "강남 가자" → "강남은 좀 별로야"(대안 없음) | 지역 미정 | **강남** — 철회 메시지를 건너뛰고 이전 언급으로 복귀 → 수정 후: 지역 미정 | **수정됨(커밋 후 해시 기입)** | `PromptSieve.lastMention`/`extractArea` | 최예인 |
 
 ### 시나리오 5 — 추천 후 한 명이 불만 피드백
 
@@ -118,13 +119,13 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 | S6-1 비정상 | 존재하지 않는 장소만 반복 | 3회 후 Failed, 2·3회차 프롬프트에 "존재하지 않는" 피드백 | 기대대로 | 통과 | — | — |
 | S6-2 정상 | 가짜 → 실존 | 2회 만에 성공, VERIFIED | 기대대로 | 통과 | — | — |
 | S6-3 정상 | 도구로 서울 지정 후 부산 가게 | "모임 지역(서울)" 피드백으로 재시도 → 성공 | 기대대로 | 통과 | — | — |
-| S6-4 비정상 | 도구 호출 없이 부산 가게(대화는 강남) | 지역 밖으로 거절 | **통과** — Guardrail에 city "미정" 전달 | **결함** | `AssistantOrchestrator.callGeminiWithTools` (지역 슬롯 미사용) | 최예인 |
+| S6-4 비정상 | 도구 호출 없이 부산 가게(대화는 강남) | 지역 밖으로 거절 | **통과** — Guardrail에 city "미정" 전달 → 수정 후: 대화 지역 슬롯으로 지역 밖 거절 후 재시도 | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator.callGeminiWithTools` (지역 슬롯 미사용) | 최예인 |
 | S6-5 비정상 | 깨진 JSON 반복 | 3회 후 "파싱 실패" Failed | 기대대로 | 통과 | — | — |
 | S6-6 근접 | 깨진 JSON 1회 → 정상 | 2회 만에 복구 | 기대대로 | 통과 | — | — |
 | S6-7 비정상 | 빈 응답(candidates 없음) | 3회 후 Failed("비어") | 기대대로 | 통과 | — | — |
 | S6-8 이상 | 빈 JSON `{}` | 재시도·실패 | **추천 0곳 Success** → 수정 후: Guardrail 실패 → 3회 후 Failed | **수정됨(c698ca9)** | `GuardrailService.verify`(후보 0건 = 통과), `AssistantOrchestrator` | 박종섭 (공동: 최예인) |
 | S6-9 이상 | `recommendedPlaces: []` | 재시도·실패 | **추천 0곳 Success** → 수정 후: "1곳 이상 추천" 피드백으로 재시도 → Failed | **수정됨(c698ca9)** | 같음 | 박종섭 (공동: 최예인) |
-| S6-10 근접 | Reflection만 실패 ×2 → 3회차 깨진 JSON | 보존한 폴백으로 Success | **Failed** — catch 분기가 fallbackSuccess를 무시 | **결함** | `AssistantOrchestrator.orchestrate` catch 블록 | 최예인 |
+| S6-10 근접 | Reflection만 실패 ×2 → 3회차 깨진 JSON | 보존한 폴백으로 Success | **Failed** — catch 분기가 fallbackSuccess를 무시 → 수정 후: 보존한 결과로 Success | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator.orchestrate` catch 블록 | 최예인 |
 | S6-11 정상 | Reflection만 계속 실패 | 3회 후 폴백 Success | 기대대로 | 통과 | — | — |
 | S6-12 이상 | 25자 초과 지어낸 장소명 | 검증 없이 통과 금지 | **UNVERIFIED로 통과** — 길이 필터로 검증 대상에서 빠짐 → 수정 후: 검색해서 CLOSED | **수정됨(c698ca9)** | `GuardrailService.verify` (`2..25`) | 박종섭 |
 | S6-13 이상 | 6곳 추천, 6번째가 가짜 | 6번째도 검증 | **검증 없이 통과** → 수정 후: 전부 검증, 6번째 CLOSED | **수정됨(c698ca9)** | `GuardrailService` (`MAX_CANDIDATES = 5`) | 박종섭 |
@@ -132,15 +133,15 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 | S6-14b 서버 장애 | 검색 "결과 없음" | 장애와 구분해 재시도 → 3회 후 Failed | 기대대로 | 통과 | — | — |
 | S6-15 서버 장애 | Gemini 프록시 계속 실패 | 3회 후 Failed | 기대대로 | 통과 | — | — |
 | S6-16 서버 장애 | 모델이 도구만 무한 호출 | 왕복 상한으로 종료(3×9=27회 호출) | 기대대로 | 통과 | — | — |
-| S6-17 근접 | "미미식당 - 조용하고 맛있음"(ASCII 하이픈) | 장소명 "미미식당" | **이유까지 장소명에 저장** | **결함** | `AssistantOrchestrator.parseGeminiPlaceEntry` | 최예인 |
-| S6-18 이상 | 장소 배열에 숫자·객체 원소 혼입 | 문자열 원소는 살림 | **시도 전체 폐기 ×3 → Failed** | **결함** | `AssistantOrchestrator.stringList`(`getString`) | 최예인 |
+| S6-17 근접 | "미미식당 - 조용하고 맛있음"(ASCII 하이픈) | 장소명 "미미식당" | **이유까지 장소명에 저장** → 수정 후: 장소명만 저장(이유 분리), 검증·매칭도 같은 이름 | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator.parseGeminiPlaceEntry` | 최예인 |
+| S6-18 이상 | 장소 배열에 숫자·객체 원소 혼입 | 문자열 원소는 살림 | **시도 전체 폐기 ×3 → Failed** → 수정 후: 문자열 원소만 살려 1회에 성공 | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator.stringList`(`getString`) | 최예인 |
 | M-1 근접 (지도 작업 중 발견) | findKakaoMatch 업종명 오매칭 — 추천명 "카페" | 다른 가게의 주소·좌표를 붙이지 않음 | **"카페 모모"의 주소·좌표를 가져옴** (발견: `KakaoPlaceCoordinateTest`, 지도 작업 중) | **수정됨(60e9798)** — `PlaceMatcher.bestMatch`로 Guardrail과 같은 규칙으로 통일 | `AssistantOrchestrator.findKakaoMatch` | - |
 
 ## 우선순위 제안
 
 1. ~~**프라이버시 (S1-8, S5-7)**~~ **수정됨** — 명단 밖 실명이 디바이스 경계를 넘는다. CLAUDE.md 불변 원칙 위반이다.
    명단을 넓히거나(후기 작성 당시 방의 참가자, 대화 본문의 호격 패턴) 스크러버의 미등록 이름 탐지를 강화해야 한다.
-2. **Guardrail 우회 (S6-4, ~~S6-8/9, S6-12, S6-13~~ 수정됨)** — 지어낸 장소·다른 지역 장소·빈 결과가 "성공"으로 나간다. 남은 것은 S6-4(오케스트레이터가 지역을 넘기지 않음).
+2. ~~**Guardrail 우회 (S6-4, S6-8/9, S6-12, S6-13)**~~ **수정됨** — 지어낸 장소·다른 지역 장소·빈 결과가 "성공"으로 나간다. 남은 것은 S6-4(오케스트레이터가 지역을 넘기지 않음).
 3. ~~**퇴장자 반영 불가 (S2-1~S2-4, S2-6)**~~ **수정됨** — 멤버 목록과 선호의 사람별 귀속이 없는 구조 문제다. 한 곳만 고쳐서는 해결되지 않는다.
 4. ~~**순서 의존 (S3-1, S3-2, S3-5)**~~ **수정됨** — `orchestrate()` 진입 시 `timestamp`(동률이면 id) 정렬 한 줄로 대부분 해소된다.
 5. ~~**피드백 미반영 (S5-2, S5-3, S5-4, S5-8)**~~ **수정됨** — 불만 장소에 대한 결정론적 배제가 없다.
@@ -352,4 +353,22 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 ### 테스트
 
 - `ComplaintGateTest` 26건: S5-2 6 · S5-3 5 · S5-4 5 · S5-8 5 · 퇴장자 3 · 대상 기록 1 · 검증 유지 1
+
+## 남은 결함 7건 수정 (S4-1, S6-18, S6-17, S6-10, S6-4, S4-9, S4-7, 2026-10-01)
+
+원칙: 기존 기능·구조 유지, 결함 수정에 필요한 최소 변경. 새 기능·저장 경로·동기화는 추가하지 않았다(DB 변경 없음).
+
+| 결함 | 수정 | 바뀐 기존 동작 |
+|---|---|---|
+| S4-1 | `orchestrate()` 입력 검증 — 내용 있는 메시지가 없으면 Gemma·Gemini 호출 없이 실패 | 빈 대화(공백뿐 포함)만. 화면은 원래 막고 있었다 |
+| S6-18 | 응답 목록에서 문자열 원소만 살리고(앞뒤 공백 정리) 숫자·객체·null·빈 문자열은 버림 | 예전엔 응답 전체 폐기·재시도 → 이제 유효한 원소로 진행. 장소·활동·준비물 문자열의 앞뒤 공백이 정리된다 |
+| S6-17 | 기존 파싱(괄호·엠/엔대시) 뒤에 `PlaceMatcher.placeNameOf`를 한 번 더 적용. 잘린 뒤쪽은 이유로. 저장·Guardrail·검증 매칭·지도 매칭이 같은 이름 | 이름에 ` - `·`:`·`\|`가 있으면 거기서 잘린다. `미미식당(본점)` → `미미식당`은 그대로 |
+| S6-10 | 마지막 시도가 예외여도 보존한 결과(Guardrail 통과·Reflection만 미충족)가 있으면 폴백 성공 | 그 경우만 실패 → 성공 |
+| S6-4 | 도구 도시가 "미정"·빈 값이면 대화의 지역 슬롯을 Guardrail에 전달(`guardrailCity`). 화면의 모임 장소(location)는 그대로 | 모델이 도구를 안 부를 때 대화 지역과 다른 시·도 가게가 거절·재시도된다 |
+| S4-9 | 지역 슬롯은 나중에 철회된 지역을 건너뛴다(`PromptSieve.lastArea`). 철회된 지역은 요약문에서도 쓰지 않는다 | 철회만 하고 대안이 없으면 미정. 다른 지역을 철회한 경우는 기존과 같다 |
+| S4-7 | 요약 입력만 6,000자 이내로(`SummaryInputWindow`): 앞 1,200자 + 최근 메시지, 가운데 "…중략…". 축소 시 원래·남긴 길이를 로그로 남김 | 긴 대화의 요약에서 가운데가 빠진다. 날짜·지역·인원 추출은 전체 대화 그대로 |
+
+- **S4-7 실기기 확인 필요**: 6,000자 예산이 Gemma E2B 컨텍스트·메모리·지연에 맞는지 실기기에서 확인해야 한다
+  - 로그 태그 `AssistantOrchestrator`의 "요약 입력 축소: 원래 N자 → K자"로 확인한다
+- 테스트: `RemainingDefectFixTest` 42건(결함마다 6건) + 기존 `@Ignore` 7건 해제
 
