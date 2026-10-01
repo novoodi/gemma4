@@ -128,6 +128,7 @@ class MigrationRuntimeTest {
                         if (version >= 5) v4ToV5.forEach(db::execSQL)
                         if (version >= 6) v5ToV6.forEach(db::execSQL)
                         if (version >= 7) v6ToV7.forEach(db::execSQL)
+                        if (version >= 8) db.execSQL("ALTER TABLE `user_status` ADD COLUMN `sourceMemberIds` TEXT NOT NULL DEFAULT ''")
 
                         // 마이그레이션이 건드리는 테이블마다 최소 1행
                         db.execSQL(
@@ -204,7 +205,7 @@ class MigrationRuntimeTest {
 
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals("최종 버전", 8, sdb.version)
+        assertEquals("최종 버전", 9, sdb.version)
 
         // 새 테이블에 쓰고 읽기 — v6 신규 컬럼 포함
         sdb.execSQL(
@@ -237,7 +238,7 @@ class MigrationRuntimeTest {
 
         val db = openLikeProduction()
         val sdb = db.openHelper.readableDatabase
-        assertEquals(8, sdb.version)
+        assertEquals(9, sdb.version)
 
         sdb.query("SELECT `feedback`, `createdAt` FROM `feedback`").use {
             assertTrue("v5→v6에서 후기가 사라졌다", it.moveToFirst())
@@ -260,7 +261,7 @@ class MigrationRuntimeTest {
 
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals(8, sdb.version)
+        assertEquals(9, sdb.version)
 
         // v7 신규 테이블 — 방 일정(roomId 있음)과 직접 추가 일정(roomId NULL) 모두
         sdb.execSQL(
@@ -285,7 +286,7 @@ class MigrationRuntimeTest {
     fun `신규 설치 경로에서 모든 테이블이 생성된다`() {
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals(8, sdb.version)
+        assertEquals(9, sdb.version)
 
         val expected = setOf(
             "user_status", "feedback", "recommended_room",
@@ -340,7 +341,7 @@ class MigrationRuntimeTest {
             .map { it.startVersion to it.endVersion }
             .toSet()
         assertNotNull(registered)
-        (4 until 8).forEach { v ->
+        (4 until 9).forEach { v ->
             assertTrue(
                 "v$v → v${v + 1} 마이그레이션이 등록돼 있지 않다 — 파괴적 폴백이 탄다",
                 registered.contains(v to v + 1)
@@ -355,7 +356,7 @@ class MigrationRuntimeTest {
         createLegacyDb(7)
 
         val db = openLikeProduction()
-        assertEquals(8, db.openHelper.readableDatabase.version)
+        assertEquals(9, db.openHelper.readableDatabase.version)
         // Room DAO·타입 컨버터 경로로 읽는다 — 컬럼 기본값('')이 컨버터 형식과 맞는지까지 확인
         val status = kotlinx.coroutines.runBlocking { db.userStatusDao().getByRoomId("room-1") }
         assertNotNull("v7→v8에서 프로필이 사라졌다 — 파괴적 폴백이 탔을 수 있다", status)
@@ -395,6 +396,56 @@ class MigrationRuntimeTest {
         db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM `feedback`").use {
             assertTrue(it.moveToFirst()); assertEquals(1, it.getInt(0))
         }
+        db.close()
+    }
+
+    // ── v8 → v9: feedback.authorUid · targetPlaces (2026-10, 불만 피드백 미반영 결함) ──────────
+
+    @Test
+    fun `v8 DB를 열면 기존 후기가 보존되고 작성자·대상은 미기록으로 읽힌다`() {
+        createLegacyDb(8)
+
+        val db = openLikeProduction()
+        assertEquals(9, db.openHelper.readableDatabase.version)
+        val rows = kotlinx.coroutines.runBlocking { db.feedbackDao().getAll() }
+        assertEquals("v8→v9에서 후기가 사라졌다", 1, rows.size)
+        assertEquals(seedFeedback, rows.single().feedback)
+        assertEquals("", rows.single().authorUid)
+        assertTrue(rows.single().targetPlaces.isEmpty())
+        // v8의 출처 기록(user_status)도 함께 살아남는다
+        assertNotNull(kotlinx.coroutines.runBlocking { db.userStatusDao().getByRoomId("room-1") })
+        db.close()
+    }
+
+    @Test
+    fun `v8에서 올라온 DB에 작성자·대상 장소를 저장하고 다시 읽을 수 있다`() {
+        createLegacyDb(8)
+
+        val db = openLikeProduction()
+        val dao = db.feedbackDao()
+        kotlinx.coroutines.runBlocking {
+            dao.insert(com.navoodi.morimi.data.local.FeedbackEntity(
+                roomId = "room-2", date = "2026-10-01", feedback = "미미식당 별로", rating = 1,
+                authorUid = "uid-a", targetPlaces = listOf("미미식당", "소담식당"),
+            ))
+            val saved = dao.getByRoom("room-2").single()
+            assertEquals("uid-a", saved.authorUid)
+            assertEquals(listOf("미미식당", "소담식당"), saved.targetPlaces)
+            // 불만 채널(getRated)로도 읽힌다
+            assertTrue(dao.getRated().any { it.feedback == "미미식당 별로" })
+        }
+        db.close()
+    }
+
+    @Test
+    fun `v4에서 v9까지 한 번에 올라와도 후기·프로필이 유지된다`() {
+        createLegacyDb(4)
+
+        val db = openLikeProduction()
+        val rows = kotlinx.coroutines.runBlocking { db.feedbackDao().getAll() }
+        assertEquals(1, rows.size)
+        assertEquals("", rows.single().authorUid)
+        assertNotNull(kotlinx.coroutines.runBlocking { db.userStatusDao().getByRoomId("room-1") })
         db.close()
     }
 }

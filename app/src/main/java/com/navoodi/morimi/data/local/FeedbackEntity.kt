@@ -27,6 +27,10 @@ data class FeedbackEntity(
      * v6 이전 행은 마이그레이션에서 [date]를 자정 기준으로 환산해 채운다.
      */
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0L,
+    /** 작성자 uid(v9). 나간 멤버의 불만을 반영하지 않기 위한 기록 — 빈 값은 미기록(이 기기 사용자로 간주) */
+    @ColumnInfo(defaultValue = "") val authorUid: String = "",
+    /** 이 후기의 대상 장소명(v9) — 작성 시점에 결정(캘린더에 담은)한 장소, 없으면 그때 추천된 장소 */
+    @ColumnInfo(defaultValue = "") val targetPlaces: List<String> = emptyList(),
 ) {
     // FloatArray는 참조 동등성이라 data class 자동 구현이 부적절 — 내용 비교로 재정의
     override fun equals(other: Any?): Boolean {
@@ -34,6 +38,7 @@ data class FeedbackEntity(
         if (other !is FeedbackEntity) return false
         return id == other.id && roomId == other.roomId && date == other.date &&
             feedback == other.feedback && rating == other.rating && createdAt == other.createdAt &&
+            authorUid == other.authorUid && targetPlaces == other.targetPlaces &&
             (embedding?.contentEquals(other.embedding) ?: (other.embedding == null))
     }
 
@@ -44,6 +49,8 @@ data class FeedbackEntity(
         result = 31 * result + feedback.hashCode()
         result = 31 * result + rating
         result = 31 * result + createdAt.hashCode()
+        result = 31 * result + authorUid.hashCode()
+        result = 31 * result + targetPlaces.hashCode()
         result = 31 * result + (embedding?.contentHashCode() ?: 0)
         return result
     }

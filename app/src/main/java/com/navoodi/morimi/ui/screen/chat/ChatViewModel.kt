@@ -195,9 +195,16 @@ class ChatViewModel(
         if (text.isBlank() || rating !in 0..5 || !_showFeedbackPrompt.value) return
         val target = pendingFeedbackTarget
         _showFeedbackPrompt.value = false
+        // 이 후기의 대상 장소와 작성자 — 불만이면 다음 추천에서 그 장소를 빼고(ComplaintGate),
+        // 작성자가 방을 나가면 반영하지 않는다
+        val decided = com.navoodi.morimi.data.repository.CalendarRepository.events.value
+            .filter { it.roomId == roomId && it.placeName.isNotBlank() }.map { it.placeName }
+        val recommended = ChatRepository.summaries.value[roomId]?.places?.map { it.name }.orEmpty()
+        val targets = com.navoodi.morimi.service.ComplaintGate.feedbackTargets(decided, recommended)
+        val author = currentUid.orEmpty()
         getApplication<MoimApp>().applicationScope.launch {
             try {
-                feedbackRepository.append(text, roomId, rating)
+                feedbackRepository.append(text, roomId, rating, authorUid = author, targetPlaces = targets)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -312,6 +319,7 @@ class ChatViewModel(
                         _agentProgress.value = when (event) {
                             is AssistantEvent.OrchestrationStarted  -> "대화 내용을 분석하고 있습니다..."
                             is AssistantEvent.MembersScoped         -> "현재 멤버의 대화만 추렸습니다..."
+                            is AssistantEvent.ComplaintsApplied     -> "불만을 남긴 장소를 제외했습니다..."
                             is AssistantEvent.ContextClassified     -> "모임 성격을 파악했습니다: ${event.label}"
                             is AssistantEvent.CriteriaWeighted      -> "이 상황에 맞는 판단 기준을 세웠습니다..."
                             is AssistantEvent.GemmaSummaryCompleted -> "핵심 내용을 추출했습니다. 클라우드에 연결 중..."

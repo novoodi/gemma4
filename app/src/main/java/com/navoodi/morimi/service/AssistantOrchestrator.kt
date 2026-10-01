@@ -88,6 +88,8 @@ sealed class AssistantEvent {
     ) : AssistantEvent()
     /** 이번 실행의 정확도·할루시네이션·적합도 측정치. */
     data class MetricsRecorded(val summary: String) : AssistantEvent()
+    /** 불만 후기 게이트(2026-10, DEFECT_TEST S5) — 사용자가 불만을 남긴 장소를 결과에서 뺐다 */
+    data class ComplaintsApplied(val attempt: Int, val blocked: List<String>, val keptCount: Int) : AssistantEvent()
     data class OrchestrationFinished(val success: Boolean, val attempts: Int, val reason: String? = null) : AssistantEvent()
 }
 
@@ -344,14 +346,26 @@ class AssistantOrchestrator(
         // 방 무관 — 이 사용자가 지난 모임들에서 남긴 취향이 새 톡방 추천에도 반영된다.
         // 피드백은 사용자 자유 텍스트(실명 가능) → 경계 통과 전 동일 PII 게이트 적용.
         val retrieved = feedbackRetriever.retrieve(query = safeSummary, topK = 3)
-        val ragRaw = if (retrieved.isEmpty()) ""
-            else retrieved.joinToString("\n") { entry ->
+        // 불만 후기(별점 1~2)는 검색 점수와 무관하게 늘 회수한다 — 쿼리(익명 요약)에 장소명이 없어
+        // 특정 장소에 대한 불만은 유사도 검색에 잘 안 걸린다(S5-8). 나간 멤버가 쓴 후기는 반영하지 않는다.
+        val complaintEntries = runCatching { feedbackRetriever.complaints() }
+            .onFailure { Log.w(TAG, "불만 후기 회수 실패 — 검색 결과만 사용", it) }
+            .getOrDefault(emptyList())
+        val feedbackPool = (retrieved + complaintEntries)
+            .distinctBy { Triple(it.date, it.feedback, it.roomId) }
+            .filter { ComplaintGate.authorIsMember(it, memberIds) }
+        val complaints = ComplaintGate.complaintsOf(feedbackPool, memberIds)
+        val avoid = ComplaintGate.avoidList(complaints)
+        val ragRaw = buildString {
+            if (avoid.isNotEmpty()) appendLine("피해야 할 장소(사용자 불만): ${avoid.joinToString(", ")}")
+            feedbackPool.forEach { entry ->
                 val stars = if (entry.rating > 0) " (만족도 ${entry.rating}/5)" else ""
-                "- [${entry.date}]$stars ${entry.feedback}"
+                appendLine("- [${entry.date}]$stars ${entry.feedback}")
             }
+        }.trim()
         val ragContext = PiiScrubber.scrub(ragRaw, knownNames).text
         // 평점이 달린 후기만 AHP "과거 만족" 기준의 증거가 된다(미평가는 중립)
-        val impressions = retrieved.map { PastImpression(it.feedback, it.rating) }
+        val impressions = feedbackPool.map { PastImpression(it.feedback, it.rating) }
 
         // ④ 거름망 — 자유 텍스트를 고정 스키마 블록으로 찍어낸다.
         //    "이번 주 토요일" 같은 상대 표현은 여기서 절대 날짜로 환산된다(모델에게 산수를 맡기지 않는다).
@@ -397,9 +411,23 @@ class AssistantOrchestrator(
             try {
                 val callResult = callGeminiWithTools(prompt, roomId, eventTracker)
 
+                // 검증 0 — 불만 게이트: 사용자가 불만을 남긴 장소는 모델이 다시 내도 결과에서 뺀다(결정론)
+                val gate = ComplaintGate.apply(callResult.summary.places, complaints)
+                if (gate.blocked.isNotEmpty()) {
+                    Log.w(TAG, "시도 $attempt 불만 장소 제외: ${gate.blocked.map { it.name }}")
+                    eventTracker?.onEvent(
+                        AssistantEvent.ComplaintsApplied(attempt, gate.blocked.map { it.name }, gate.kept.size)
+                    )
+                    val note = ComplaintGate.feedbackFor(gate.blocked)
+                    accumulatedFeedback = if (accumulatedFeedback.isBlank()) note else "$accumulatedFeedback\n$note"
+                    // 남는 장소가 없으면 이번 시도는 실패 — 피드백을 안고 다시 추천받는다
+                    if (gate.kept.isEmpty()) continue
+                }
+                val proposed = callResult.summary.copy(places = gate.kept)
+
                 // 검증 1 — Guardrail: 추천 장소가 실제로 존재/영업하는가 (하드 게이트)
                 val guardrail = guardrailService.verify(
-                    placeNames = callResult.summary.places.map { it.name },
+                    placeNames = proposed.places.map { it.name },
                     city = callResult.city
                 )
                 val unknownCount = guardrail.verifiedPlaces.count { it.status == PlaceStatus.UNKNOWN }
@@ -409,7 +437,7 @@ class AssistantOrchestrator(
                 )
 
                 // 검증 상태 병합 + searchPlace로 못 채운 주소·좌표를 Guardrail 매칭 가게로 보충(추가 호출 없음)
-                val verifiedSummary = applyVerification(callResult.summary, guardrail.verifiedPlaces).let { s ->
+                val verifiedSummary = applyVerification(proposed, guardrail.verifiedPlaces).let { s ->
                     s.copy(places = s.places.map { fillFromGuardrail(it, guardrail.matchedPlaces) })
                 }
 

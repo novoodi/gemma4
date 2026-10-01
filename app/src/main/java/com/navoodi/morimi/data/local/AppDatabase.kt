@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AhpJudgmentEntity::class,
         CalendarEventEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -123,6 +123,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v8→v9 (2026-10-01): feedback에 authorUid(작성자)·targetPlaces(대상 장소) 추가.
+        // 불만 후기의 장소를 다음 추천에서 결정론적으로 빼고(ComplaintGate), 나간 멤버의 불만은 무시하기 위함.
+        // 기존 행은 ''(미기록)로 채워진다 — 본문에 장소명이 있으면 언급 판정으로 여전히 반영된다.
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `feedback` ADD COLUMN `authorUid` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `feedback` ADD COLUMN `targetPlaces` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /**
          * 앱이 실제로 등록하는 마이그레이션 목록.
          *
@@ -132,7 +142,7 @@ abstract class AppDatabase : RoomDatabase() {
          * (`MigrationRuntimeTest` 2026-09-23 S3)
          */
         fun productionMigrations(): Array<Migration> =
-            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
 
         fun getInstance(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {

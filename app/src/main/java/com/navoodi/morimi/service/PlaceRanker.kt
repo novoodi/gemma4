@@ -115,7 +115,7 @@ object PlaceRanker {
                     AhpCriterion.PREFERENCE_FIT to preferenceFit(text, likes),
                     AhpCriterion.CONSTRAINT_SAFETY to constraintSafety(text, dislikes),
                     AhpCriterion.VERIFIED_TRUST to verifiedTrust(place.verification),
-                    AhpCriterion.PAST_SATISFACTION to pastSatisfaction(text, pastImpressions),
+                    AhpCriterion.PAST_SATISFACTION to pastSatisfaction(text, pastImpressions, place.name),
                 )
                 RankedPlace(
                     place = place,
@@ -188,23 +188,37 @@ object PlaceRanker {
      *
      * 평가된 후기가 없으면 중립(0.5) — 데이터가 없다는 사실이 벌점이 되면 안 된다.
      */
-    internal fun pastSatisfaction(text: String, pastImpressions: List<PastImpression>): Double {
+    internal fun pastSatisfaction(text: String, pastImpressions: List<PastImpression>, placeName: String? = null): Double {
         if (pastImpressions.isEmpty()) return NEUTRAL
-        val placeTokens = KoTextMatch.contentTokens(text).toSet()
+        val placeTokens = stems(text)
         if (placeTokens.isEmpty()) return NEUTRAL
 
         val positives = pastImpressions.filter { it.isPositive }
         val negatives = pastImpressions.filter { it.isNegative }
         if (positives.isEmpty() && negatives.isEmpty()) return NEUTRAL
 
-        fun bestOverlap(items: List<PastImpression>): Double =
-            items.maxOfOrNull { jaccard(placeTokens, KoTextMatch.contentTokens(it.text).toSet()) } ?: 0.0
+        // 후기가 이 장소 이름을 언급하면(조사가 붙어도 — "미미식당은") 가장 강한 근거로 본다(2026-10 S5-4).
+        // 그 외에는 업종·분위기 단어 겹침으로 "비슷한 곳"을 잰다 — 조사를 뗀 어간끼리 비교한다.
+        fun bestOverlap(items: List<PastImpression>): Double = items.maxOfOrNull { imp ->
+            if (placeName != null && PlaceMatcher.mentionedIn(imp.text, placeName)) 1.0
+            else jaccard(placeTokens, stems(imp.text))
+        } ?: 0.0
 
         // 자카드는 값이 작게 나오는 척도라 배율을 줘서 중립 위아래로 벌린다
         // (겹침 0 → 0.5 유지, 겹침 0.25 이상이면 상·하한에 도달)
         val delta = (bestOverlap(positives) - bestOverlap(negatives)) * 2.0
         return (NEUTRAL + delta).coerceIn(0.0, 1.0)
     }
+
+    /** 흔한 조사 꼬리 — "술집은"·"분위기가"·"카페에서"를 "술집"·"분위기"·"카페"로 맞춘다 */
+    private val JOSA_TAIL = Regex("(에서는|에서|으로|에게|한테|이랑|랑|은|는|이|가|을|를|도|에|로|와|과|의|만)$")
+
+    /** 비교용 어간 집합 — KoTextMatch 토큰에서 조사 꼬리를 떼되 2글자 미만이 되면 원형 유지 */
+    private fun stems(text: String): Set<String> =
+        KoTextMatch.contentTokens(text).map { t ->
+            val cut = t.replace(JOSA_TAIL, "")
+            if (cut.length >= KoTextMatch.MIN_TOKEN_LEN) cut else t
+        }.toSet()
 
     private fun jaccard(a: Set<String>, b: Set<String>): Double {
         if (a.isEmpty() || b.isEmpty()) return 0.0

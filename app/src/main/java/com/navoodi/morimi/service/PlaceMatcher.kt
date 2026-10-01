@@ -142,6 +142,20 @@ object PlaceMatcher {
 
     private val PLACE_NAME_SEPARATOR = Regex("""[—–―:|]|\s-\s|\s-$|\s\(""")
 
+    /**
+     * 자유 텍스트(후기 등)가 이 장소를 언급하는가 — 공백·기호·조사와 무관하게("미미식당은", "미미식당이랑").
+     * 이유·지점명·앞 지역 토큰을 뗀 핵심 이름이 정규화된 텍스트에 들어 있으면 언급으로 본다.
+     * 핵심 이름이 업종 일반명사뿐("카페")이거나 2자 미만이면 언급으로 보지 않는다 — 아무 후기에나 걸린다.
+     * 지점이 달라도 같은 상호면 언급이다("미미식당 강남점" 후기 ↔ "미미식당 역삼점").
+     */
+    fun mentionedIn(text: String, placeName: String): Boolean {
+        val hay = canonical(text)
+        if (hay.isEmpty()) return false
+        val raw = placeNameOf(placeName)
+        val cores = listOfNotNull(raw, withoutLeadingRegion(raw)).map { normalizeName(it) }.distinct()
+        return cores.any { core -> core.length >= MIN_CONTAIN_LEN && !isGenericOnly(core) && hay.contains(core) }
+    }
+
     /** 추천명과 검색 결과 이름이 같은 가게를 가리키는가 */
     fun nameMatches(recommended: String, candidate: String): Boolean {
         val cand = normalizeName(candidate)

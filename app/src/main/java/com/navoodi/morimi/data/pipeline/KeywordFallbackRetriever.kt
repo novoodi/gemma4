@@ -2,6 +2,7 @@ package com.navoodi.morimi.data.pipeline
 
 import com.navoodi.morimi.data.local.FeedbackDao
 import com.navoodi.morimi.data.repository.FeedbackEntry
+import com.navoodi.morimi.data.repository.toEntry
 
 /**
  * 폴백 리트리버 — 임베딩 모델 미다운로드 시 사용.
@@ -20,7 +21,7 @@ class KeywordFallbackRetriever(
         val qTokens = tokenize(query)
         // 쿼리에서 유의미한 토큰을 못 뽑으면 최근순 폴백(getByRoom이 id DESC 정렬)
         if (qTokens.isEmpty()) {
-            return candidates.take(topK).map { FeedbackEntry(it.date, it.feedback, it.roomId, it.rating) }
+            return candidates.take(topK).map { it.toEntry() }
         }
 
         return candidates
@@ -28,8 +29,10 @@ class KeywordFallbackRetriever(
             .filter { it.second > 0.0 }
             .sortedByDescending { it.second }
             .take(topK)
-            .map { (e, _) -> FeedbackEntry(e.date, e.feedback, e.roomId, e.rating) }
+            .map { (e, _) -> e.toEntry() }
     }
+
+    override suspend fun complaints(limit: Int): List<FeedbackEntry> = recentComplaints(feedbackDao, limit)
 
     companion object {
         // 한글/영숫자 2글자 이상 토큰 추출(조사·기호 제거 근사)

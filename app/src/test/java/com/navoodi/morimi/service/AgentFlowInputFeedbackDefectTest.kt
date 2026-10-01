@@ -123,14 +123,12 @@ class AgentFlowInputFeedbackDefectTest {
         assertTrue(r.prompts.first().contains("만족도 1/5"))
     }
 
-    @Ignore("결함: 불만 후기 장소를 모델이 다시 추천하면 그대로 최종 결과에 포함 — 피드백은 프롬프트 텍스트일 뿐 결정론적 배제 게이트 없음")
     @Test
     fun `S5-2 비정상 - 불만 장소를 모델이 다시 추천하면 최종 결과에서 빠져야 한다`() {
         val r = AgentFlow.run(dinner, okGemini, retriever = FixedRetriever(listOf(complaint)))
         assertFalse(r.placeNames.toString(), r.placeNames.contains("미미식당"))
     }
 
-    @Ignore("결함: 불만 장소의 다른 지점(미미식당 역삼점)도 그대로 포함 — 유사 장소 배제 없음")
     @Test
     fun `S5-3 비정상 - 불만 장소의 다른 지점(비슷한 곳)도 빠져야 한다`() {
         val c = complaint.copy(feedback = "미미식당 강남점 너무 시끄러웠어요")
@@ -139,18 +137,18 @@ class AgentFlowInputFeedbackDefectTest {
         assertFalse(r.placeNames.toString(), r.placeNames.any { it.startsWith("미미식당") })
     }
 
-    @Ignore("결함: 조사 붙은 이름('미미식당은')의 불만 후기가 감점되지 않음 — PlaceRanker.pastSatisfaction 토큰 매칭이 조사 미처리")
     @Test
-    fun `S5-4 근접 오류 - 별점 1 불만 후기(조사 붙은 이름)가 랭킹에서 감점된다`() {
+    fun `S5-4 근접 오류 - 조사 붙은 이름('미미식당은')의 불만도 그 장소로 인식한다(결과에서 제외)`() {
+        // 2026-10: 불만 장소는 감점이 아니라 결과 단계에서 제외한다(ComplaintGate). 조사 처리는 같은 규칙
         val c = complaint.copy(feedback = "미미식당은 너무 시끄러웠어요")
         val r = AgentFlow.run(dinner, okGemini, retriever = FixedRetriever(listOf(c)))
-        assertEquals(listOf("소담식당", "미미식당"), r.placeNames)
+        assertEquals(listOf("소담식당"), r.placeNames)
     }
 
     @Test
-    fun `S5-5 정상 - 별점 1 불만 후기(띄어쓴 이름)는 랭킹에서 감점된다`() {
+    fun `S5-5 정상 - 별점 1 불만 후기(띄어쓴 이름)의 장소는 결과에서 빠진다`() {
         val r = AgentFlow.run(dinner, okGemini, retriever = FixedRetriever(listOf(complaint)))
-        assertEquals(listOf("소담식당", "미미식당"), r.placeNames)
+        assertEquals(listOf("소담식당"), r.placeNames)
     }
 
     @Ignore("결함: 별점 없는(0점) 불만 후기는 감점 안 됨 — 설계상 중립 처리(논의 필요)")
@@ -168,7 +166,6 @@ class AgentFlowInputFeedbackDefectTest {
         assertFalse("후기 속 실명이 Gemini로 전송됨", r.gemini.allSentText().contains("지훈"))
     }
 
-    @Ignore("결함: 키워드 폴백 검색이 요약문(장소명 없음)을 쿼리로 써서 장소 불만 후기를 회수 못 함")
     @Test
     fun `S5-8 비정상 - 키워드 폴백 검색에서도 장소 불만 후기가 회수돼야 한다`() {
         val dao = FakeFeedbackDao(

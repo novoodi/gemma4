@@ -3,6 +3,7 @@ package com.navoodi.morimi.data.pipeline
 import android.util.Log
 import com.navoodi.morimi.data.local.FeedbackDao
 import com.navoodi.morimi.data.repository.FeedbackEntry
+import com.navoodi.morimi.data.repository.toEntry
 import com.navoodi.morimi.service.EmbeddingGemmaEmbedder
 
 /**
@@ -25,6 +26,8 @@ class EmbeddingGemmaRetriever(
             .sortedByDescending { it.second }
             .take(topK)
             .also { top -> Log.d("EmbeddingGemmaRetriever", "전체 후보 ${candidates.size} → top${top.size} (최고 cos=${top.firstOrNull()?.second})") }
-            .map { (e, _) -> FeedbackEntry(date = e.date, feedback = e.feedback, roomId = e.roomId, rating = e.rating) }
+            .map { (e, _) -> e.toEntry() }
     }
+
+    override suspend fun complaints(limit: Int): List<FeedbackEntry> = recentComplaints(feedbackDao, limit)
 }
