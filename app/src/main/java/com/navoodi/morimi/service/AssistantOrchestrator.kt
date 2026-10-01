@@ -111,6 +111,43 @@ class AssistantOrchestrator(
         private const val MAX_TOOL_ROUNDS = 8
         private const val MODEL_NAME = "gemini-3.5-flash"
         private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
+
+        /**
+         * Gemini 장소 문자열 1건 → [RecommendedPlace]. searchPlace 도구로 모은 카카오 결과와
+         * 이름이 맞으면 주소·지도 링크·좌표를 채운다(좌표는 지도 핀용 — 깨진 값은 KakaoPlace에서 이미 null).
+         * internal — JVM 단위 테스트에서 직접 검증.
+         */
+        internal fun toRecommendedPlace(geminiStr: String, kakaoPlaces: List<KakaoPlace>): RecommendedPlace {
+            val (pName, reason) = parseGeminiPlaceEntry(geminiStr)
+            val matched = findKakaoMatch(pName, kakaoPlaces)
+            return RecommendedPlace(
+                name = pName.ifBlank { geminiStr },
+                address = matched?.let { it.roadAddress.ifBlank { it.address } } ?: "",
+                reason = reason,
+                placeUrl = matched?.url ?: "",
+                latitude = matched?.latitude,
+                longitude = matched?.longitude,
+            )
+        }
+
+        private fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
+            // 장소명 = 주소 괄호'(' 또는 이유 구분 대시(—/–) 중 가장 먼저 나오는 지점 이전.
+            // ASCII '-'는 주소("상계로1길 14-11")·전화번호에 흔하므로 구분자로 쓰지 않는다.
+            val nameEnd = listOf(s.indexOf('('), s.indexOf('—'), s.indexOf('–'))
+                .filter { it >= 0 }
+                .minOrNull() ?: s.length
+            val name = s.substring(0, nameEnd).trim()
+            // 이유 = em/en 대시 뒤 (없으면 빈 문자열)
+            val dashIdx = s.indexOfFirst { it == '—' || it == '–' }
+            val reason = if (dashIdx >= 0) s.substring(dashIdx + 1).trim() else ""
+            return (name.ifBlank { s.trim() }) to reason
+        }
+
+        private fun findKakaoMatch(name: String, candidates: List<KakaoPlace>): KakaoPlace? {
+            if (name.isBlank() || candidates.isEmpty()) return null
+            return candidates.firstOrNull { it.name == name }
+                ?: candidates.firstOrNull { it.name.contains(name) || name.contains(it.name) }
+        }
     }
 
     // ── Gemini Tool 스키마 선언 (REST 와이어 포맷 — GeminiWire) ────────────────
@@ -501,16 +538,7 @@ class AssistantOrchestrator(
             items.forEach { appendLine("• $it") }
         }.trim()
 
-        val placesStructured = places.map { geminiStr ->
-            val (pName, reason) = parseGeminiPlaceEntry(geminiStr)
-            val matched = findKakaoMatch(pName, collectedKakaoPlaces)
-            RecommendedPlace(
-                name = pName.ifBlank { geminiStr },
-                address = matched?.let { it.roadAddress.ifBlank { it.address } } ?: "",
-                reason = reason,
-                placeUrl = matched?.url ?: ""
-            )
-        }
+        val placesStructured = places.map { geminiStr -> toRecommendedPlace(geminiStr, collectedKakaoPlaces) }
 
         Log.d(TAG, "JSON 파싱 완료 — 장소 ${places.size}곳(매칭 ${placesStructured.count { it.placeUrl.isNotBlank() }}개), 활동 ${activities.size}개, 준비물 ${items.size}개")
 
@@ -576,19 +604,6 @@ class AssistantOrchestrator(
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
-    }
-
-    private fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
-        // 장소명 = 주소 괄호'(' 또는 이유 구분 대시(—/–) 중 가장 먼저 나오는 지점 이전.
-        // ASCII '-'는 주소("상계로1길 14-11")·전화번호에 흔하므로 구분자로 쓰지 않는다.
-        val nameEnd = listOf(s.indexOf('('), s.indexOf('—'), s.indexOf('–'))
-            .filter { it >= 0 }
-            .minOrNull() ?: s.length
-        val name = s.substring(0, nameEnd).trim()
-        // 이유 = em/en 대시 뒤 (없으면 빈 문자열)
-        val dashIdx = s.indexOfFirst { it == '—' || it == '–' }
-        val reason = if (dashIdx >= 0) s.substring(dashIdx + 1).trim() else ""
-        return (name.ifBlank { s.trim() }) to reason
     }
 
     /**
@@ -673,12 +688,6 @@ class AssistantOrchestrator(
             place.copy(verification = v)
         }
         return summary.copy(places = updatedPlaces)
-    }
-
-    private fun findKakaoMatch(name: String, candidates: List<KakaoPlace>): KakaoPlace? {
-        if (name.isBlank() || candidates.isEmpty()) return null
-        return candidates.firstOrNull { it.name == name }
-            ?: candidates.firstOrNull { it.name.contains(name) || name.contains(it.name) }
     }
 
 }

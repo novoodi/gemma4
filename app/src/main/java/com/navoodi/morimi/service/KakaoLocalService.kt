@@ -1,6 +1,8 @@
 package com.navoodi.morimi.service
 
 import android.util.Log
+import com.navoodi.morimi.data.model.GeoPoint
+import org.json.JSONArray
 import org.json.JSONObject
 
 data class KakaoPlace(
@@ -10,6 +12,10 @@ data class KakaoPlace(
     val address: String,
     val roadAddress: String,
     val url: String,
+    /** 카카오 documents의 y. 빈 값·파싱 실패·범위 밖이면 null ([GeoPoint.fromKakao]) */
+    val latitude: Double? = null,
+    /** 카카오 documents의 x. 빈 값·파싱 실패·범위 밖이면 null */
+    val longitude: Double? = null,
 )
 
 /**
@@ -35,18 +41,7 @@ object KakaoLocalService {
     ): List<KakaoPlace> {
         if (query.isBlank()) return emptyList()
         return try {
-            val docs = search(query, size, categoryGroupCode).getJSONArray("documents")
-            (0 until docs.length()).map { i ->
-                val d = docs.getJSONObject(i)
-                KakaoPlace(
-                    name = d.optString("place_name"),
-                    category = d.optString("category_name"),
-                    phone = d.optString("phone"),
-                    address = d.optString("address_name"),
-                    roadAddress = d.optString("road_address_name"),
-                    url = d.optString("place_url"),
-                )
-            }
+            parseDocuments(search(query, size, categoryGroupCode).getJSONArray("documents"))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -68,19 +63,7 @@ object KakaoLocalService {
         return try {
             val docs = search(name, size).optJSONArray("documents")
                 ?: return PlaceSearchResult.Failed("응답에 documents 없음")
-            PlaceSearchResult.Found(
-                (0 until docs.length()).mapNotNull { i ->
-                    val d = docs.optJSONObject(i) ?: return@mapNotNull null
-                    KakaoPlace(
-                        name = d.optString("place_name"),
-                        category = d.optString("category_name"),
-                        phone = d.optString("phone"),
-                        address = d.optString("address_name"),
-                        roadAddress = d.optString("road_address_name"),
-                        url = d.optString("place_url"),
-                    )
-                }
-            )
+            PlaceSearchResult.Found(parseDocuments(docs))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -88,6 +71,27 @@ object KakaoLocalService {
             PlaceSearchResult.Failed(e.message ?: e.javaClass.simpleName)
         }
     }
+
+    /**
+     * 카카오 키워드 검색 documents → [KakaoPlace]. 객체가 아닌 원소는 건너뛰고,
+     * 좌표(x 경도, y 위도)는 [GeoPoint.fromKakao]로 검증해 실패하면 null로 둔다 — 좌표 하나가
+     * 깨졌다고 가게 정보 전체를 버리지 않는다. 순수 함수(JVM 단위 테스트 가능).
+     */
+    internal fun parseDocuments(docs: JSONArray): List<KakaoPlace> =
+        (0 until docs.length()).mapNotNull { i ->
+            val d = docs.optJSONObject(i) ?: return@mapNotNull null
+            val point = GeoPoint.fromKakao(d.optString("x"), d.optString("y"))
+            KakaoPlace(
+                name = d.optString("place_name"),
+                category = d.optString("category_name"),
+                phone = d.optString("phone"),
+                address = d.optString("address_name"),
+                roadAddress = d.optString("road_address_name"),
+                url = d.optString("place_url"),
+                latitude = point?.latitude,
+                longitude = point?.longitude,
+            )
+        }
 
     /** 검증 시 받는 검색 결과 수 (카카오 키워드 검색 size 상한 15 이내) */
     const val VERIFY_SIZE = 10

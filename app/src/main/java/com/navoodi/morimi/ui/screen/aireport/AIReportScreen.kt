@@ -18,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -215,6 +216,14 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                 }
             }
 
+            // 지도 — 버튼 없이 항상 펼쳐 둔다. 장소 카드로 넘기면 그 장소 핀을 강조한다
+            val focusedPlace = (pages.getOrNull(pagerState.currentPage) as? CardPage.Place)?.index
+            PlaceMapView(
+                places = s.places,
+                focusedIndex = focusedPlace,
+                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 10.dp),
+            )
+
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier.weight(1f),
@@ -229,6 +238,7 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                     )
                     is CardPage.Place -> PlaceCard(
                         place = s.places[page.index],
+                        pinLabel = page.index + 1,
                         roomId = viewModel.roomId,
                         events = events,
                         onToggle = viewModel::togglePlace,
@@ -339,6 +349,7 @@ private fun MeetingCard(
 @Composable
 private fun PlaceCard(
     place: RecommendedPlace,
+    pinLabel: Int,
     roomId: String,
     events: List<CalendarEvent>,
     onToggle: (RecommendedPlace) -> Unit,
@@ -365,11 +376,20 @@ private fun PlaceCard(
                 .border(1.dp, MoColors.border, RoundedCornerShape(16.dp))
                 .padding(16.dp),
         ) {
-            Text(place.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 지도 핀과 같은 번호 — 좌표가 없는 장소는 핀이 없으므로 번호 배지도 흐리게
+                PinBadge(pinLabel, modifier = if (place.geoPoint == null) Modifier.alpha(0.35f) else Modifier)
+                Text(place.name, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
+            }
             VerificationBadge(place.verification)
-            if (place.address.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
-                Text(place.address, fontSize = 13.sp, color = MoColors.textSecondary)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "📍 " + place.address.ifBlank { "주소 정보 없음" },
+                fontSize = 13.sp,
+                color = if (place.address.isBlank()) MoColors.textTertiary else MoColors.textSecondary,
+            )
+            if (place.geoPoint == null) {
+                Text("지도 위치 정보가 없어 지도에는 표시되지 않아요", fontSize = 11.sp, color = MoColors.textTertiary)
             }
             if (place.reason.isNotBlank()) {
                 HorizontalDivider(color = MoColors.border, modifier = Modifier.padding(vertical = 12.dp))
@@ -383,11 +403,11 @@ private fun PlaceCard(
             }
         }
 
-        if (place.placeUrl.isNotBlank()) {
+        run {
             OutlinedButton(
                 onClick = {
                     try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(place.placeUrl)))
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PlaceMapPlanner.kakaoMapLink(place))))
                     } catch (_: Exception) {}
                 },
                 modifier = Modifier.fillMaxWidth().height(48.dp),

@@ -527,3 +527,31 @@ JVM 테스트가 전부 `ClassNotFoundException`으로 실패했다. README의 �
 
 `ScenarioSnapshotTest` KDoc의 고정 대상도 레포에 없는 `docs/SCENARIOS.md`에서 README 비교표로 바꿨다
 (시나리오 문서는 재작성하지 않기로 함).
+
+## 2026-10-01 — 추천 결과 지도: WebView + 카카오맵 JavaScript SDK 채택
+
+**결정**: 추천 결과 화면 상단에 지도를 항상 펼쳐 두고(버튼 없이), 추천 장소 전부를 번호 핀으로
+표시한다. 구현은 WebView + 카카오맵 JavaScript SDK. 좌표는 카카오 키워드 검색 응답의 x/y를
+`KakaoPlace` → `RecommendedPlace(latitude, longitude)`로 옮기고 `MeetingSummaryJson`에 저장한다.
+
+**근거**:
+- 새 Gradle 의존성·네이티브 .so가 없다. WebView는 플랫폼 내장이라 litertlm·LiteRT·DJL과
+  네이티브 충돌 스파이크가 필요 없다
+- 좌표 출처(카카오 검색, WGS84)와 지도가 같은 제공자라 좌표계 변환 없이 핀이 맞는다
+- 여러 핀 + 범위 맞춤 + 카드 연동(focusPin)을 JS 몇 줄로 처리
+- 키 격리: JS 키는 도메인 제한 클라이언트 키. `local.properties` → `BuildConfig` 경로로만 넣고,
+  없으면 주소·카카오맵 링크 목록으로 대체(앱이 죽지 않음)
+
+**기각한 대안**:
+- **카카오맵 Android SDK v2**: 네이티브 지도 품질은 가장 좋지만 전용 maven 저장소 + 네이티브 .so가 추가된다.
+  CLAUDE.md 원칙상 실기기 스파이크(16KB 정렬·.so 공존) 없이는 채택할 수 없다. 앱 키·키 해시 등록도 필요
+- **정적 지도 이미지**: 카카오는 REST 정적 지도를 제공하지 않고, Google Static Maps는 결제 계정이 필요하다.
+  핀 강조·이동도 불가
+- **OSM(osmdroid/Leaflet)**: 키는 필요 없지만 의존성이 추가되고 국내 POI·도로 품질이 떨어진다. 타일 서버 사용 정책 부담도 있다
+
+**남은 리스크**:
+1. 실기기 확인 전 — WebView에서 SDK 로드, 콘솔 도메인(`http://localhost`) 인증
+2. 좌표는 searchPlace 도구로 모은 결과와 이름이 맞을 때만 채워진다. 모델이 도구를 안 쓰면 핀이 없다(대체 목록 표시).
+   Guardrail 검색 결과의 좌표를 쓰면 보완되지만 `GuardrailResult` 형식 변경이 필요하다
+3. `findKakaoMatch`의 포함 매칭이 일반명사("카페")에 다른 가게 좌표를 붙인다(`KakaoPlaceCoordinateTest` @Ignore)
+4. 지도 타일 요청으로 장소 좌표가 카카오에 전달된다. 채팅 원문이 아니라 공개 장소 좌표라 프라이버시 방화벽 대상은 아니다
