@@ -118,12 +118,12 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 | S6-5 비정상 | 깨진 JSON 반복 | 3회 후 "파싱 실패" Failed | 기대대로 | 통과 | — | — |
 | S6-6 근접 | 깨진 JSON 1회 → 정상 | 2회 만에 복구 | 기대대로 | 통과 | — | — |
 | S6-7 비정상 | 빈 응답(candidates 없음) | 3회 후 Failed("비어") | 기대대로 | 통과 | — | — |
-| S6-8 이상 | 빈 JSON `{}` | 재시도·실패 | **추천 0곳 Success** → 수정 후: Guardrail 실패 → 3회 후 Failed | **수정됨(커밋 후 해시 기입)** | `GuardrailService.verify`(후보 0건 = 통과), `AssistantOrchestrator` | 박종섭 (공동: 최예인) |
-| S6-9 이상 | `recommendedPlaces: []` | 재시도·실패 | **추천 0곳 Success** → 수정 후: "1곳 이상 추천" 피드백으로 재시도 → Failed | **수정됨(커밋 후 해시 기입)** | 같음 | 박종섭 (공동: 최예인) |
+| S6-8 이상 | 빈 JSON `{}` | 재시도·실패 | **추천 0곳 Success** → 수정 후: Guardrail 실패 → 3회 후 Failed | **수정됨(c698ca9)** | `GuardrailService.verify`(후보 0건 = 통과), `AssistantOrchestrator` | 박종섭 (공동: 최예인) |
+| S6-9 이상 | `recommendedPlaces: []` | 재시도·실패 | **추천 0곳 Success** → 수정 후: "1곳 이상 추천" 피드백으로 재시도 → Failed | **수정됨(c698ca9)** | 같음 | 박종섭 (공동: 최예인) |
 | S6-10 근접 | Reflection만 실패 ×2 → 3회차 깨진 JSON | 보존한 폴백으로 Success | **Failed** — catch 분기가 fallbackSuccess를 무시 | **결함** | `AssistantOrchestrator.orchestrate` catch 블록 | 최예인 |
 | S6-11 정상 | Reflection만 계속 실패 | 3회 후 폴백 Success | 기대대로 | 통과 | — | — |
-| S6-12 이상 | 25자 초과 지어낸 장소명 | 검증 없이 통과 금지 | **UNVERIFIED로 통과** — 길이 필터로 검증 대상에서 빠짐 → 수정 후: 검색해서 CLOSED | **수정됨(커밋 후 해시 기입)** | `GuardrailService.verify` (`2..25`) | 박종섭 |
-| S6-13 이상 | 6곳 추천, 6번째가 가짜 | 6번째도 검증 | **검증 없이 통과** → 수정 후: 전부 검증, 6번째 CLOSED | **수정됨(커밋 후 해시 기입)** | `GuardrailService` (`MAX_CANDIDATES = 5`) | 박종섭 |
+| S6-12 이상 | 25자 초과 지어낸 장소명 | 검증 없이 통과 금지 | **UNVERIFIED로 통과** — 길이 필터로 검증 대상에서 빠짐 → 수정 후: 검색해서 CLOSED | **수정됨(c698ca9)** | `GuardrailService.verify` (`2..25`) | 박종섭 |
+| S6-13 이상 | 6곳 추천, 6번째가 가짜 | 6번째도 검증 | **검증 없이 통과** → 수정 후: 전부 검증, 6번째 CLOSED | **수정됨(c698ca9)** | `GuardrailService` (`MAX_CANDIDATES = 5`) | 박종섭 |
 | S6-14 서버 장애 | 장소 검색 프록시 전면 장애 | UNKNOWN으로 1회 통과(재시도 없음) | 기대대로 | 통과 | — | — |
 | S6-14b 서버 장애 | 검색 "결과 없음" | 장애와 구분해 재시도 → 3회 후 Failed | 기대대로 | 통과 | — | — |
 | S6-15 서버 장애 | Gemini 프록시 계속 실패 | 3회 후 Failed | 기대대로 | 통과 | — | — |
