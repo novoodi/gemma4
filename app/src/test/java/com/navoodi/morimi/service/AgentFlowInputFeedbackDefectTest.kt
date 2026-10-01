@@ -161,7 +161,6 @@ class AgentFlowInputFeedbackDefectTest {
         assertEquals(listOf("소담식당", "미미식당"), r.placeNames)
     }
 
-    @Ignore("결함: 다른 방 후기 속 제3자 실명(지훈이랑)이 Gemini로 누출 — knownNames가 현재 방 기준이라 후기 속 이름을 모름")
     @Test
     fun `S5-7 이상 - 다른 방 후기 속 제3자 실명은 경계에서 마스킹돼야 한다`() {
         val c = complaint.copy(feedback = "지훈이랑 갔던 미미식당 너무 시끄러웠어요")

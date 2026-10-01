@@ -94,7 +94,6 @@ class AgentFlowParticipantsDefectTest {
         assertFalse(r.gemini.allSentText().contains("지훈"))
     }
 
-    @Ignore("결함: 명단 밖·호칭 없는 제3자 이름(지훈이도)이 Gemini로 누출 — PiiScrubber는 knownNames/님·씨 패턴만 잡음")
     @Test
     fun `S1-8 근접 오류 - 프로필 압축 전(userStatus 없음) 대화 속 제3자 이름도 마스킹돼야 한다`() {
         val msgs = listOf(msg("김민수", "토요일 강남 저녁, 지훈이도 온대", 1), msg("이지영", "좋아", 2))

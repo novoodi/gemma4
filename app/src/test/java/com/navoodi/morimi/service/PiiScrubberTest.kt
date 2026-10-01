@@ -39,9 +39,12 @@ class PiiScrubberTest {
     @Test
     fun `이름의 부분 문자열이 다른 단어에 포함돼도 과잉 소거하지 않는다`() {
         // "민수"가 명단에 없고 풀네임 "김민수"만 있을 때, "수민"·"민수동" 같은 것을 오소거하면 안 됨
-        val r = PiiScrubber.scrub("수민이는 민수동 카페를 좋아합니다.", knownNames = listOf("박수현"))
+        // 명단 대조만(2026-10 이전 동작): 아무것도 지우지 않는다
+        val r = PiiScrubber.scrub("수민이는 민수동 카페를 좋아합니다.", knownNames = listOf("박수현"), detectUnlisted = false)
         assertEquals("수민이는 민수동 카페를 좋아합니다.", r.text)
         assertEquals(0, r.redactions)
+        // 명단 밖 탐지 켜짐(기본): "수민이는"은 이름 형태(받침 이름 + 이 + 는)라 지우지만, 합성어 "민수동"은 남긴다
+        assertEquals("[이름]이는 민수동 카페를 좋아합니다.", PiiScrubber.scrub("수민이는 민수동 카페를 좋아합니다.", listOf("박수현")).text)
     }
 
     // ── 전화번호 ──────────────────────────────────────────────────────────────

@@ -153,7 +153,9 @@ object PromptSieve {
         val carriedMarker = lastTimeMarker(messages, safeSummary)
         lastMention(messages, safeSummary) { extractTimeOfDay(it, carriedMarker) }
             ?.let { slots[FrameSlot.TIME_OF_DAY] = it }
-        lastMention(messages, safeSummary) { extractArea(it) }
+        // 사람 이름은 지역 후보에서 뺀다 — "강민구"(발신자·대화 속 이름)가 "…구" 패턴으로 지역이 되던 문제
+        val personNames = personNamesOf(messages, userStatus)
+        lastMention(messages, safeSummary) { extractArea(it, personNames) }
             ?.let { slots[FrameSlot.WHERE] = it }
         lastMention(messages, safeSummary) { extractBudget(it) }
             ?.let { slots[FrameSlot.BUDGET] = it }
@@ -383,12 +385,18 @@ object PromptSieve {
      *
      * 지금은 모든 후보를 **위치와 함께** 모으고, 부정된 것을 버리고, 마지막 것을 쓴다.
      * 마지막을 쓰는 건 `lastMention`과 같은 규칙이다 — 대화든 문장이든 나중 말이 이긴다.
+     *
+     * 사람 이름은 지역이 아니다(2026-10). "…구" 패턴은 실제 구 이름([PlaceMatcher.DISTRICTS])일 때만
+     * 지역으로 보고("강민구"·"남자친구" 제외), [personNames]에 있는 이름은 어떤 패턴이든 버린다.
+     * 지역 슬롯 값은 정형 블록·검색어로 클라우드에 나가므로, 이름이 지역으로 둔갑하면 오추천과
+     * 함께 이름 누출 경로가 된다.
      */
-    internal fun extractArea(text: String): String? {
+    internal fun extractArea(text: String, personNames: Set<String> = emptySet()): String? {
         data class Hit(val at: Int, val name: String)
         val hits = ArrayList<Hit>()
 
         for (area in KNOWN_AREAS) {
+            if (area in personNames) continue
             var i = text.indexOf(area)
             while (i >= 0) {
                 hits += Hit(i, area)
@@ -397,7 +405,9 @@ object PromptSieve {
         }
         RE_AREA_SUFFIX.findAll(text).forEach { m ->
             val whole = m.groupValues[1] + m.groupValues[2]
-            if (whole !in AREA_STOPWORDS && m.groupValues[1] !in AREA_STOPWORDS) {
+            val isPerson = whole in personNames || m.groupValues[1] in personNames
+            val fakeDistrict = m.groupValues[2] == "구" && whole !in PlaceMatcher.DISTRICTS
+            if (whole !in AREA_STOPWORDS && m.groupValues[1] !in AREA_STOPWORDS && !isPerson && !fakeDistrict) {
                 // 사전에 이미 잡힌 자리와 겹치면 중복으로 세지 않는다("망원동"의 "망원")
                 if (hits.none { it.at <= m.range.first && m.range.first < it.at + it.name.length }) {
                     hits += Hit(m.range.first, whole)
@@ -409,6 +419,18 @@ object PromptSieve {
         val surviving = hits.filterNot { KoTextMatch.isNegatedAfter(text, it.at + it.name.length) }
         // 전부 부정됐으면 문장이 지역을 말하지 않은 것으로 본다(억지로 고르지 않는다)
         return surviving.maxByOrNull { it.at }?.name
+    }
+
+    /**
+     * 지역 후보에서 뺄 사람 이름 — 발신자·프로필 참가자(3자 이름은 이름 부분도)와,
+     * 대화 본문에서 [PiiScrubber.detectNames]가 찾은 명단 밖 이름. 기기 안에서만 쓴다.
+     */
+    internal fun personNamesOf(messages: List<Message>, userStatus: UserStatusEntity?): Set<String> {
+        val roster = (messages.map { it.senderName } + userStatus?.participants.orEmpty())
+            .map { it.trim() }.filter { it.length >= 2 }
+        val given = roster.filter { it.length == 3 && it.all { c -> c in '가'..'힣' } }.map { it.substring(1) }
+        val detected = messages.flatMap { PiiScrubber.detectNames(it.content) }
+        return (roster + given + detected).toSet()
     }
 
     /** 명시된 "N명"이 있으면 그것, 없으면 실제 발화자 수(2명 이상일 때만). */

@@ -17,11 +17,12 @@ class RecommendationPromptTest {
 
     @Test
     fun `지역으로 오인한 참가자 이름은 검색어에도 남지 않는다`() {
+        // 2026-10: "…구"는 실제 구 이름일 때만 지역이다 — 이름이 지역 슬롯·검색어로 들어가는 경로 자체가 막혔다
         val sieved = sieve("김민구 내일 밥 먹자")
-        assertTrue(sieved.placeQuery.contains("김민구")) // 실제 우회 입력을 구성했는지 확인
+        assertFalse(sieved.placeQuery.contains("김민구"))
+        assertEquals(SievedPrompt.UNSPECIFIED, sieved.slot(FrameSlot.WHERE))
         val prompt = RecommendationPrompt.build(sieved, date, "", listOf("김민구"))
         assertFalse(prompt.contains("김민구"))
-        assertTrue(prompt.contains(PiiScrubber.NAME_MASK))
         assertTrue(prompt.contains("2026-09-23"))
     }
 

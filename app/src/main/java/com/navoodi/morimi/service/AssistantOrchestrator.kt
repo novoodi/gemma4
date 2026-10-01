@@ -624,11 +624,16 @@ class AssistantOrchestrator(
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
-    /** 스크러버가 대조할 확정 이름 목록 — 발신자명 + 프로필 참가자(중복·공백 제거). */
+    /**
+     * 스크러버가 대조할 확정 이름 목록 — 발신자명 + 프로필 참가자 + 대화 본문에서 찾은 명단 밖 이름
+     * (중복·공백 제거). 본문 이름은 기기 안의 원문에서만 찾는다: "지훈이도 온대"가 원문에 있으면
+     * 요약·정형 블록에 "지훈"이 맨 이름으로 옮겨 적혀도 지울 수 있다(DEFECT_TEST S1-8).
+     */
     private fun buildKnownNames(messages: List<Message>, userStatus: UserStatusEntity?): List<String> {
         val fromMessages = messages.map { it.senderName }
         val fromStatus = userStatus?.participants ?: emptyList()
-        return (fromMessages + fromStatus)
+        val mentioned = messages.flatMap { PiiScrubber.detectNames(it.content) }
+        return (fromMessages + fromStatus + mentioned)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
