@@ -51,28 +51,29 @@ class StatusCompressionPipeline(
      * 압축이 조용히 실패한다. 델타만 LLM에 넘겨 토큰을 유한하게 유지하고,
      * 직전 [UserStatusEntity]와 결정론적으로 병합해 과거 성향을 보존한다.
      */
+    /** @return 압축 결과를 저장했거나 압축할 멤버 메시지가 없었으면 true, Gemma·파싱·저장 실패면 false(재시도 대상) */
     suspend fun compress(
         roomId: String,
         messages: List<Message>,
         memberIds: Set<String>? = null,
-    ) = withContext(Dispatchers.IO) {
+    ): Boolean = withContext(Dispatchers.IO) {
         writeMutex.withLock { compressLocked(roomId, messages, memberIds) }
     }
 
-    private suspend fun compressLocked(roomId: String, all: List<Message>, memberIds: Set<String>?) {
+    private suspend fun compressLocked(roomId: String, all: List<Message>, memberIds: Set<String>?): Boolean {
         try {
             // 나간 사람의 메시지는 선호 추출 대상이 아니다(동조 맥락은 인용으로 보존)
             val messages = MemberScope.scope(all, memberIds)
             if (messages.isEmpty()) {
                 Log.d(TAG, "멤버 메시지 없음 — 압축 스킵 roomId=$roomId")
-                return
+                return true
             }
             val raw = llmPort.compress(messages)
             Log.d(TAG, "LLM 응답 raw (앞 200자): ${raw.take(200)}")
 
             val fresh = extractAndParse(raw, roomId) ?: run {
                 Log.w(TAG, "JSON 추출 실패 — 스킵 roomId=$roomId")
-                return
+                return false
             }
 
             // 나간 사람이 섞였을 수 있는 프로필에는 병합하지 않는다(재구성이 따로 돈다)
@@ -94,10 +95,12 @@ class StatusCompressionPipeline(
                 "prefs=${merged.preferences.size} " +
                 "avail=${merged.availability.size} " +
                 "(델타 ${messages.size}건)")
+            return true
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "압축 파이프라인 오류 roomId=$roomId", e)
+            return false
         }
     }
 
@@ -114,7 +117,7 @@ class StatusCompressionPipeline(
     suspend fun rebuild(roomId: String, allMessages: List<Message>, memberIds: Set<String>): RebuildResult =
         withContext(Dispatchers.IO) {
             writeMutex.withLock {
-                val scoped = MemberScope.scope(allMessages, memberIds).sortedBy { it.timestamp }
+                val scoped = MessageOrder.canonical(MemberScope.scope(allMessages, memberIds))
                 val stamp = memberIds.sorted()
                 if (scoped.isEmpty()) {
                     repository.upsert(UserStatusEntity(roomId = roomId, sourceMemberIds = stamp))

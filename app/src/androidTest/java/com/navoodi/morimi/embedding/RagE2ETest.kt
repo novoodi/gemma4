@@ -35,7 +35,8 @@ class RagE2ETest {
     private val app get() = ctx.applicationContext as MoimApp
 
     private fun msgs(vararg c: String) = c.mapIndexed { i, t ->
-        Message(roomId = ROOM, senderId = "u${i % 2}", senderName = if (i % 2 == 0) "철수" else "영희", content = t)
+        Message(roomId = ROOM, senderId = "u${i % 2}", senderName = if (i % 2 == 0) "철수" else "영희", content = t,
+            timestamp = 1_000L + i) // 정본 순서(서버 시각 → 문서 id) 대비 작성 순서를 시각으로 명시
     }
 
     private fun capture() = mutableListOf<AssistantEvent>().let { list ->

@@ -10,7 +10,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 
@@ -187,7 +186,6 @@ class AgentFlowParticipantsDefectTest {
 
     // ═══ 시나리오 3 — 순서 뒤섞임 · 동시 발화 ════════════════════════════════
 
-    @Ignore("결함: 메시지를 timestamp로 정렬하지 않아 순서가 뒤섞이면 철회된 지역(홍대)이 전송됨")
     @Test
     fun `S3-1 비정상 - 리스트 순서가 뒤섞여도 시각상 마지막 지역 변경이 반영된다`() {
         val inOrder = listOf(
@@ -198,7 +196,6 @@ class AgentFlowParticipantsDefectTest {
         assertEquals("강남", r.slot("지역"))
     }
 
-    @Ignore("결함: 메시지를 timestamp로 정렬하지 않아 순서가 뒤섞이면 철회된 날짜(토요일)가 전송됨")
     @Test
     fun `S3-2 비정상 - 리스트 순서가 뒤섞여도 시각상 마지막 날짜 변경이 반영된다`() {
         val inOrder = listOf(
@@ -228,11 +225,12 @@ class AgentFlowParticipantsDefectTest {
             msg("최유나", "ㅇㅋ", 2),
         )
         val r = AgentFlow.run(msgs, okGemini)
-        assertEquals(msgs.map { it.id }, r.llm.received.single().map { it.id })
+        // 모두 전달된다(누락·덮어쓰기 없음). 순서는 정본 순서 — 같은 시각은 문서 id 순(2026-10 S3)
+        assertEquals(com.navoodi.morimi.data.pipeline.MessageOrder.canonical(msgs).map { it.id }, r.llm.received.single().map { it.id })
+        assertEquals(4, r.llm.received.single().size)
         assertEquals("4명 (대화 참여자 기준)", r.slot("인원"))
     }
 
-    @Ignore("결함: 같은 시각 상충 발화의 결과가 입력 순서에 따라 달라짐(비결정)")
     @Test
     fun `S3-5 경계 - 같은 시각 상충 발화는 입력 순서와 무관하게 같은 결과여야 한다`() {
         val a = msg("김민수", "토요일 강남 가자", 7_000)

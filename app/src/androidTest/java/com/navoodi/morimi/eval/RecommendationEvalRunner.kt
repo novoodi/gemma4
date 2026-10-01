@@ -137,7 +137,9 @@ class RecommendationEvalRunner {
             val msgs = d.getJSONArray("messages").let { a ->
                 List(a.length()) { k ->
                     val m = a.getJSONObject(k)
-                    Message(roomId = "__eval__$id", senderId = m.getString("pid"), senderName = m.getString("sender"), content = m.getString("text"))
+                    Message(roomId = "__eval__$id", senderId = m.getString("pid"), senderName = m.getString("sender"), content = m.getString("text"),
+                        // 정본 순서(서버 시각 → 문서 id)를 따르므로 대화 순서를 시각으로 명시한다(2026-10 S3)
+                        timestamp = 1_000L + k)
                 }
             }
             val g = d.getJSONObject("gold")

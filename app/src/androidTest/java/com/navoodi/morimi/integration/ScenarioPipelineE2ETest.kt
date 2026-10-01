@@ -63,8 +63,10 @@ class ScenarioPipelineE2ETest {
         availability = listOf("저녁 가능"),
     )
 
+    // 오케스트레이터는 정본 순서(서버 시각 → 문서 id)로 정렬한다 — 작성 순서를 시각으로 명시(2026-10 S3)
+    private var clock = 1_000L
     private fun msg(who: String, text: String) =
-        Message(roomId = "e2e", senderId = who, senderName = who, content = text)
+        Message(roomId = "e2e", senderId = who, senderName = who, content = text, timestamp = clock++)
 
     private val scenarioA = listOf(
         msg("도윤", "이번 주 토요일이 준호 생일인데 축하해주자"),

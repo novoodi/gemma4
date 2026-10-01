@@ -31,7 +31,14 @@ object MemberScope {
      */
     fun scope(messages: List<Message>, memberIds: Set<String>?): List<Message> {
         if (memberIds == null) return messages
-        val timeOrder = messages.withIndex().sortedWith(compareBy({ it.value.timestamp }, { it.index }))
+        // "바로 앞 말"은 정본 순서(서버 시각 → 문서 id)로 찾는다 — 리스트 순서를 믿지 않는다
+        val timeOrder = messages.withIndex().sortedWith { a, b ->
+            when {
+                MessageOrder.before(a.value, b.value) -> -1
+                MessageOrder.before(b.value, a.value) -> 1
+                else -> a.index.compareTo(b.index)
+            }
+        }
         val previousOf = HashMap<Int, Message>()
         timeOrder.zipWithNext { a, b -> previousOf[b.index] = a.value }
 

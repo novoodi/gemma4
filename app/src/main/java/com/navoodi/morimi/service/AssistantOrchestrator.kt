@@ -8,6 +8,7 @@ import com.navoodi.morimi.data.model.RecommendedPlace
 import com.navoodi.morimi.data.model.VerificationStatus
 import com.navoodi.morimi.data.pipeline.FeedbackRetriever
 import com.navoodi.morimi.data.pipeline.MemberScope
+import com.navoodi.morimi.data.pipeline.MessageOrder
 import com.navoodi.morimi.data.pipeline.OnDeviceLlmPort
 import com.navoodi.morimi.data.repository.MetricsRepository
 import org.json.JSONArray
@@ -266,7 +267,8 @@ class AssistantOrchestrator(
 
         // ⓪ 멤버 범위 — 나간 사람의 말은 기기 안에서 먼저 걸러낸다(동조 맥락은 인용으로 보존)
         val historySenders = messages.map { it.senderId }.filter { it.isNotBlank() }.toSet()
-        val scoped = MemberScope.scope(messages, memberIds)
+        // 정본 순서(서버 시각 → 문서 id)로 먼저 세운다 — 리스트가 섞여 와도 "마지막 결정"이 바뀌지 않게(S3)
+        val scoped = MemberScope.scope(MessageOrder.canonical(messages), memberIds)
         val profileUsable = MemberScope.profileUsable(userStatus, memberIds, historySenders)
         // 이 아래에서 선호·불호·참가자 판단은 profile만 쓴다(나간 사람이 섞였을 수 있으면 null)
         val profile = if (profileUsable) userStatus else null

@@ -9,6 +9,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.navoodi.morimi.MoimApp
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
+import com.navoodi.morimi.data.pipeline.CompressionPlanner
 import com.navoodi.morimi.data.pipeline.MemberScope
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
 import com.navoodi.morimi.data.repository.ChatRepository
@@ -64,11 +65,7 @@ class ChatViewModel(
 
     companion object {
         private const val TAG = "ChatViewModel"
-        private const val COMPRESSION_TRIGGER_COUNT = 10
-
-        // 증분 압축 델타 창 — 트리거마다 넘길 최근 메시지 수. 트리거 간격(10)보다 약간 크게 잡아
-        // 스냅샷 지연으로 인한 누락을 겹침으로 방어(병합이 중복을 제거하므로 겹침은 무해).
-        private const val COMPRESSION_WINDOW_SIZE = 15
+        // 증분 압축 스케줄(트리거 개수·창 크기·따라잡기 상한)은 CompressionPlanner가 정한다
     }
 
     // 현재 로그인 uid — UI에서 isMe 판단에 사용
@@ -101,6 +98,11 @@ class ChatViewModel(
     // 끝나기 전에는 오케스트레이터가 오래된 프로필을 쓰지 않는다(MemberScope.profileUsable).
     private var rebuildJob: Job? = null
     private var rebuildAttemptedFor: Set<String>? = null
+
+    // 압축이 끝난 메시지 id — 누가 보냈든, 압축 도중·늦게 도착했든 id가 없으면 다음 회차에 압축된다.
+    // 메인 스레드(viewModelScope)에서만 읽고 쓴다.
+    private val compressedIds = HashSet<String>()
+    private var compressedIdsLoaded = false
 
     /** 현재 방 멤버 uid. 방 정보를 아직 못 받았으면 null(멤버 필터 없음 — 이전 동작) */
     private val currentMemberIds: Set<String>?
@@ -136,6 +138,18 @@ class ChatViewModel(
                 _feedbackError.value = "후기 대상을 확인하지 못했습니다. 방에 다시 들어와 주세요."
             }
         }
+        // 메시지가 바뀔 때마다(내 전송·다른 사람 전송·늦은 도착 모두) 압축할 때가 됐는지 본다
+        viewModelScope.launch {
+            messages.collect { msgs ->
+                if (msgs.isEmpty()) return@collect
+                if (!compressedIdsLoaded) {
+                    val updatedAt = runCatching { userStatusRepository.getStatus(roomId)?.lastUpdated }.getOrNull()
+                    compressedIds += CompressionPlanner.initiallyCompressed(msgs, updatedAt)
+                    compressedIdsLoaded = true
+                }
+                maybeCompress()
+            }
+        }
         // 멤버 목록(Firestore participantUids)이 바뀌면 프로필이 아직 유효한지 확인하고 필요하면 재구성
         viewModelScope.launch {
             combine(
@@ -163,6 +177,12 @@ class ChatViewModel(
                 .onFailure { Log.e(TAG, "프로필 재구성 예외 — 프로필 없이 진행", it) }
                 .getOrNull()
             Log.d(TAG, "프로필 재구성 roomId=$roomId 멤버 ${members.size}명 결과=$result")
+            if (result == StatusCompressionPipeline.RebuildResult.REBUILT ||
+                result == StatusCompressionPipeline.RebuildResult.EMPTY
+            ) {
+                // 재구성이 다룬 메시지는 다시 증분 압축하지 않는다(메인 스레드에서 표시)
+                kotlinx.coroutines.withContext(Dispatchers.Main) { compressedIds += msgs.map { it.id } }
+            }
         }
     }
 
@@ -216,23 +236,35 @@ class ChatViewModel(
         if (text.isBlank()) return
         _inputText.value = ""
         val senderName = auth.currentUser?.displayName ?: "나"
-        val preCount = messages.value.size
-        viewModelScope.launch {
-            ChatRepository.sendMessage(roomId, text, senderName)
-            if ((preCount + 1) % COMPRESSION_TRIGGER_COUNT == 0) {
-                // 누적 전체가 아닌 최근 델타만 압축에 넘긴다(컨텍스트 초과 방지) — 파이프라인이 직전 상태와 병합
-                triggerStatusCompression(messages.value.takeLast(COMPRESSION_WINDOW_SIZE))
-            }
-        }
+        // 압축은 여기서 트리거하지 않는다 — 전송된 메시지가 messages 흐름에 들어오면 maybeCompress가 본다
+        viewModelScope.launch { ChatRepository.sendMessage(roomId, text, senderName) }
     }
 
-    private fun triggerStatusCompression(msgs: List<Message>) {
-        compressionJob = viewModelScope.launch(Dispatchers.IO) {
+    /**
+     * 아직 압축되지 않은 메시지가 충분히 쌓였으면 백그라운드로 압축한다(동시에 한 회차만).
+     * 이번 회차가 다루는 id만 끝난 뒤 표시하므로, 압축 도중 도착한 메시지는 끝나고 바로 다음 회차에 잡힌다.
+     * 실패하면 표시하지 않는다 — 다음 메시지가 올 때 다시 시도(실패 즉시 재시도 루프 없음).
+     */
+    private fun maybeCompress(force: Boolean = false) {
+        if (compressionJob?.isActive == true || !compressedIdsLoaded) return
+        val plan = CompressionPlanner.plan(messages.value, compressedIds, force) ?: return
+        val members = currentMemberIds
+        compressionJob = viewModelScope.launch {
             _isCompressing.value = true
+            var ok = true
             try {
-                compressionPipeline.compress(roomId, msgs, currentMemberIds)
+                for (batch in plan.batches) {
+                    ok = compressionPipeline.compress(roomId, batch, members) && ok
+                }
             } finally {
                 _isCompressing.value = false
+            }
+            if (ok) {
+                compressedIds += plan.coveredIds
+                if (plan.skipped > 0) Log.w(TAG, "압축 따라잡기 상한 — 옛 메시지 ${plan.skipped}건 건너뜀")
+                maybeCompress() // 압축 중 도착한 메시지
+            } else {
+                Log.w(TAG, "압축 실패 — 다음 메시지 도착 시 재시도")
             }
         }
     }
@@ -250,10 +282,13 @@ class ChatViewModel(
         _summaryState.value = SummaryState.Loading
         _agentProgress.value = ""
         _debugLog.value = emptyList()
+        // 버튼을 누른 시점까지의 메시지는 10개가 안 쌓였어도 프로필에 반영한다(누락 방지)
+        maybeCompress(force = true)
         val appScope = getApplication<MoimApp>().applicationScope
         appScope.launch {
             try {
-                compressionJob?.join()
+                // 진행 중 압축(압축 중 도착분의 후속 회차 포함)이 끝날 때까지 기다린다
+                while (compressionJob?.isActive == true) compressionJob?.join()
 
                 val userStatus = userStatusRepository.getStatus(roomId)
                 // 재구성(rebuildJob)은 기다리지 않는다 — 끝나기 전 프로필은 오케스트레이터가 쓰지 않는다
