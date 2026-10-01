@@ -164,4 +164,76 @@ class PlaceMatcherTest {
         assertNull(PlaceMatcher.withoutLeadingRegion("미미식당 본관"))
         assertEquals("미미식당", PlaceMatcher.withoutLeadingRegion("서울 미미식당"))
     }
+
+    // ── 업종 일반명사만 남는 추천명 ──────────────────────────
+
+    @Test
+    fun `일반명사 - 서울 식당은 다른 식당과 일치하지 않음`() {
+        assertFalse(PlaceMatcher.nameMatches("서울 식당", "미미식당"))
+        assertFalse(PlaceMatcher.nameMatches("서울 식당", "식당"))
+        assertFalse(PlaceMatcher.nameMatches("서울 식당", "원조 서울 한식당"))
+    }
+
+    @Test
+    fun `일반명사 - 강남 카페는 다른 카페와 일치하지 않음`() {
+        assertFalse(PlaceMatcher.nameMatches("강남 카페", "카페 모모"))
+        assertFalse(PlaceMatcher.nameMatches("강남 카페", "스타벅스 강남R점"))
+    }
+
+    @Test
+    fun `일반명사 - 홍대 술집은 다른 술집과 일치하지 않음`() {
+        assertFalse(PlaceMatcher.nameMatches("홍대 술집", "달빛술집"))
+        assertFalse(PlaceMatcher.nameMatches("홍대 술집", "홍대 술집 골목포차"))
+    }
+
+    @Test
+    fun `일반명사 - 실제 상호가 서울식당이면 완전 일치로 통과`() {
+        assertTrue(PlaceMatcher.nameMatches("서울 식당", "서울식당"))
+        assertTrue(PlaceMatcher.nameMatches("서울식당", "서울식당 종로점"))
+        assertTrue(PlaceMatcher.nameMatches("강남 카페", "강남카페"))
+    }
+
+    @Test
+    fun `일반명사 - 일반명사와 고유명사 조합은 기존처럼 통과`() {
+        assertTrue(PlaceMatcher.nameMatches("카페 모모", "카페모모 연남점"))
+        assertTrue(PlaceMatcher.nameMatches("홍대 카페 모모", "카페 모모"))
+        assertTrue(PlaceMatcher.nameMatches("미미식당", "원조 미미식당"))
+    }
+
+    @Test
+    fun `일반명사 - 공백과 기호만 다른 강남 카페도 막힘`() {
+        assertFalse(PlaceMatcher.nameMatches("강남  카페!", "카페 모모"))
+        assertFalse(PlaceMatcher.nameMatches("  강남 · 카페~ ", "블루보틀 카페"))
+        assertTrue(PlaceMatcher.nameMatches("강남  카페!", "강남카페"))
+    }
+
+    @Test
+    fun `일반명사 - 일반명사끼리 이어붙인 핵심 이름도 막힘`() {
+        assertFalse(PlaceMatcher.nameMatches("성수 카페 바", "카페바 모노"))
+        assertFalse(PlaceMatcher.nameMatches("신촌 호프주점", "역전 호프주점"))
+        assertFalse(PlaceMatcher.nameMatches("식당", "미미식당"))
+    }
+
+    @Test
+    fun `일반명사 - 검색 결과 이름이 일반명사뿐이면 포함 관계로 잡지 않음`() {
+        assertFalse(PlaceMatcher.nameMatches("미미식당", "식당"))
+        assertFalse(PlaceMatcher.nameMatches("모모 카페", "카페"))
+    }
+
+    @Test
+    fun `일반명사 - evaluate에서 지어낸 지역+업종 이름은 NOT_FOUND`() {
+        val results = listOf(place("미미식당"), place("서울 한식당"), place("식당"))
+        assertEquals(Outcome.NOT_FOUND, PlaceMatcher.evaluate("서울 식당", results, "서울"))
+        assertEquals(Outcome.MATCHED, PlaceMatcher.evaluate("서울 식당", results + place("서울식당"), "서울"))
+    }
+
+    @Test
+    fun `일반명사 - 분해 판정`() {
+        assertTrue(PlaceMatcher.isGenericOnly("카페"))
+        assertTrue(PlaceMatcher.isGenericOnly("카페바"))
+        assertTrue(PlaceMatcher.isGenericOnly("호프주점"))
+        assertFalse(PlaceMatcher.isGenericOnly("카페모모"))
+        assertFalse(PlaceMatcher.isGenericOnly("서울식당"))
+        assertFalse(PlaceMatcher.isGenericOnly(""))
+    }
 }

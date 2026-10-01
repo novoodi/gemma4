@@ -12,6 +12,8 @@ package com.navoodi.morimi.service
  * - 끝의 "~점" 지점명 토큰 무시 ("스타벅스 홍대입구역점" ≈ "스타벅스")
  * - 추천명 맨 앞의 지역명 토큰 제거 ("홍대 미미식당" ≈ "미미식당")
  * - 위 정규화 후 포함 관계 허용, 단 짧은 쪽이 [MIN_CONTAIN_LEN]자 이상일 때만
+ * - 단, 지역 토큰을 뗀 핵심 이름이 업종 일반명사뿐이면("서울 식당" → "식당") 포함 관계를
+ *   허용하지 않고 원래 추천명 전체와의 완전 일치만 인정한다 ([GENERIC_NOUNS] 참조)
  *
  * 지역 규칙: 시·도 단위로만 비교한다(인접 동네 추천은 정상). 모임 도시가 "미정"이거나
  * 시·도로 환원할 수 없으면 지역 검사를 생략한다.
@@ -33,6 +35,27 @@ object PlaceMatcher {
     private val NON_WORD = Regex("[^\\p{L}\\p{N}]")
     private val TOKEN_SPLIT = Regex("[\\s,/·()\\[\\]{}<>-]+")
     private val ADMIN_SUFFIX = Regex("(특별자치시|특별자치도|특별시|광역시|역|시|도|구|군|동|읍|면)$")
+
+    /**
+     * 업종 일반명사 — 이것만으로는 특정 가게를 가리키지 못하는 단어들.
+     *
+     * 모델이 "서울 식당"·"강남 카페"처럼 지역 + 업종으로 장소를 지어내면, 지역 토큰을 뗀 핵심
+     * 이름("식당")이 거의 모든 검색 결과 이름에 포함돼 포함 관계 매칭이 무조건 통과한다.
+     * 그래서 핵심 이름이 이 단어들(의 이어붙임, 예: "카페바")로만 이루어져 있으면 포함 관계를
+     * 막고, 원래 추천명 전체가 정규화 기준으로 완전히 같을 때만 인정한다 — 실제 상호가
+     * "서울식당"인 가게는 통과, "미미식당"은 불통과. 같은 이유로 포함 관계의 짧은 쪽이
+     * 일반명사뿐인 경우("식당"이라는 검색 결과 ⊂ "미미식당")도 막는다.
+     * "카페 모모"처럼 고유명사가 섞이면 일반명사뿐이 아니므로 기존 규칙 그대로다.
+     * 정규화([canonical]) 후 형태(소문자, 공백·기호 없음)로 둔다.
+     */
+    internal val GENERIC_NOUNS: Set<String> = setOf(
+        "식당", "음식점", "밥집", "맛집", "레스토랑", "한식", "한식당", "중식", "중식당", "일식", "일식당",
+        "양식", "분식", "분식집", "고깃집", "횟집", "국밥", "치킨", "피자", "뷔페", "카페", "커피",
+        "커피숍", "커피전문점", "디저트", "베이커리", "빵집", "제과점", "브런치", "술집", "주점", "호프",
+        "포차", "포장마차", "이자카야", "펍", "바", "와인", "노래방",
+        "restaurant", "cafe", "coffee", "bakery", "pub", "bar",
+    )
+    private val MAX_GENERIC_LEN = GENERIC_NOUNS.maxOf { it.length }
 
     /** 시·도 정식/약식 명칭 → 정규 키 */
     private val PROVINCES: Map<String, String> = buildMap {
@@ -107,15 +130,30 @@ object PlaceMatcher {
     /** 추천명과 검색 결과 이름이 같은 가게를 가리키는가 */
     fun nameMatches(recommended: String, candidate: String): Boolean {
         val cand = normalizeName(candidate)
-        if (cand.isEmpty()) return false
-        val variants = listOfNotNull(recommended, withoutLeadingRegion(recommended))
-            .map { normalizeName(it) }
-            .filter { it.isNotEmpty() }
-        return variants.any { rec ->
+        val full = normalizeName(recommended)
+        if (cand.isEmpty() || full.isEmpty()) return false
+        val core = withoutLeadingRegion(recommended)?.let { normalizeName(it) }?.ifEmpty { null } ?: full
+        // 핵심 이름이 업종 일반명사뿐이면 원래 추천명 전체의 완전 일치만 인정
+        if (isGenericOnly(core)) return full == cand
+        return listOf(full, core).distinct().any { rec ->
             if (rec == cand) return@any true
             val (short, long) = if (rec.length <= cand.length) rec to cand else cand to rec
-            short.length >= MIN_CONTAIN_LEN && long.contains(short)
+            short.length >= MIN_CONTAIN_LEN && !isGenericOnly(short) && long.contains(short)
         }
+    }
+
+    /** 정규화된 이름이 업종 일반명사(들의 이어붙임)로만 이루어져 있는가 ("카페", "카페바", "호프주점") */
+    internal fun isGenericOnly(normalized: String): Boolean {
+        if (normalized.isEmpty()) return false
+        // reachable[i] = normalized[0, i)가 일반명사들로 분해 가능
+        val reachable = BooleanArray(normalized.length + 1).also { it[0] = true }
+        for (i in normalized.indices) {
+            if (!reachable[i]) continue
+            for (len in 1..minOf(MAX_GENERIC_LEN, normalized.length - i)) {
+                if (normalized.substring(i, i + len) in GENERIC_NOUNS) reachable[i + len] = true
+            }
+        }
+        return reachable[normalized.length]
     }
 
     /** 모임 도시 문자열 → 시·도 키. "미정"·빈 값·모르는 지역은 null(지역 검사 생략). */
