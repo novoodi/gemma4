@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AhpJudgmentEntity::class,
         CalendarEventEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -113,6 +113,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // v7→v8 (2026-10-01): user_status에 sourceMemberIds(프로필을 만든 멤버 uid) 추가.
+        // 나간 사람의 선호가 프로필에 남는 문제(DEFECT_TEST S2)를 막는 출처 기록이다.
+        // 기존 행은 ''(빈 목록 = 출처 미기록)로 채워지고 그대로 읽힌다 — 프로필 데이터는 보존된다.
+        // 빈 문자열은 Converters.fromList(emptyList())와 같은 값이다.
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `user_status` ADD COLUMN `sourceMemberIds` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         /**
          * 앱이 실제로 등록하는 마이그레이션 목록.
          *
@@ -122,7 +132,7 @@ abstract class AppDatabase : RoomDatabase() {
          * (`MigrationRuntimeTest` 2026-09-23 S3)
          */
         fun productionMigrations(): Array<Migration> =
-            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            arrayOf(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 
         fun getInstance(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {

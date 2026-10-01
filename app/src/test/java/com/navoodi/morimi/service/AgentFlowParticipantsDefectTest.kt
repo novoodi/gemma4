@@ -11,6 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Ignore
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 
 /**
@@ -60,7 +61,6 @@ class AgentFlowParticipantsDefectTest {
         assertEquals("4명", r.slot("인원"))
     }
 
-    @Ignore("결함: 동명이인(다른 senderId)을 이름으로 dedup해 인원 과소 산정 — PromptSieve.speakerHeadcount가 senderName 기준")
     @Test
     fun `S1-5 이상 - 동명이인(다른 senderId)은 서로 다른 사람으로 센다`() {
         val msgs = listOf(
@@ -105,6 +105,7 @@ class AgentFlowParticipantsDefectTest {
     // ═══ 시나리오 2 — 5명 중 1명(정하늘)이 중간에 나감 ═════════════════════════
 
     private val stay = listOf("김민수", "이지영", "박서준", "최유나")
+    private val stayIds = stay.toSet() // msg()의 senderId = 이름
     private val leaver = "정하늘"
 
     /** 정하늘이 회·술집 취향을 말한 뒤 퇴장. 남은 4명은 토요일 강남 저녁으로 합의. */
@@ -124,50 +125,48 @@ class AgentFlowParticipantsDefectTest {
         preferences = listOf("좋아요: 회", "싫어요: 술집", "좋아요: 조용한 곳"),
     )
 
-    @Ignore("결함: 퇴장자가 인원에 포함 — orchestrate 입력에 현재 멤버 목록이 없고 전체 이력 발화자를 셈")
     @Test
     fun `S2-1 비정상 - 퇴장 후 인원은 남은 4명이어야 한다`() {
-        val r = AgentFlow.run(leaveConversation(), okGemini, userStatus = profileWithLeaver)
+        val r = AgentFlow.run(leaveConversation(), okGemini, userStatus = profileWithLeaver, memberIds = stayIds)
         assertEquals("4명 (대화 참여자 기준)", r.slot("인원"))
     }
 
-    @Ignore("결함: 퇴장자의 선호가 선호 슬롯에 남음 — user_status 선호가 사람별 귀속 없이 합집합 누적")
     @Test
     fun `S2-2 비정상 - 나간 사람의 선호(회)는 선호 슬롯에서 빠져야 한다`() {
-        val r = AgentFlow.run(leaveConversation(), okGemini, userStatus = profileWithLeaver)
+        val r = AgentFlow.run(leaveConversation(), okGemini, userStatus = profileWithLeaver, memberIds = stayIds)
         assertFalse(r.slot("선호").contains("회"))
     }
 
-    @Ignore("결함: 퇴장자의 불호로 Reflection 재시도 3회 — 같은 원인(user_status 선호 귀속·퇴장 반영 없음)")
     @Test
     fun `S2-3 비정상 - 나간 사람의 불호(술집) 때문에 재시도가 일어나면 안 된다`() {
         val gemini = ScriptedGemini.of(Gem.final(listOf("달빛술집 — 분위기 좋은 술집", "소담식당")))
-        val r = AgentFlow.run(leaveConversation(), gemini, userStatus = profileWithLeaver)
+        val r = AgentFlow.run(leaveConversation(), gemini, userStatus = profileWithLeaver, memberIds = stayIds)
         assertEquals(1, r.success!!.attempts)
     }
 
-    @Ignore("결함: mergeStatus는 참가자를 지울 경로가 없음 — 퇴장 신호가 압축 파이프라인에 전달되지 않음")
     @Test
-    fun `S2-4 비정상 - 상태 병합은 퇴장자를 참가자 목록에서 제거할 수 있어야 한다`() {
+    fun `S2-4 비정상 - 퇴장 후 프로필은 남은 멤버 대화로 재구성돼 퇴장자 이름·선호가 빠진다`() = runBlocking {
+        // 설계: 델타 병합(mergeStatus)은 퇴장을 알 수 없다 → 멤버 변화 시 rebuild가 남은 멤버 대화로 다시 만든다
         val dao = object : UserStatusDao {
-            override suspend fun upsert(entity: UserStatusEntity) {}
-            override suspend fun getByRoomId(roomId: String): UserStatusEntity? = null
-            override suspend fun deleteByRoomId(roomId: String) {}
+            var row: UserStatusEntity? = profileWithLeaver
+            override suspend fun upsert(entity: UserStatusEntity) { row = entity }
+            override suspend fun getByRoomId(roomId: String): UserStatusEntity? = row
+            override suspend fun deleteByRoomId(roomId: String) { row = null }
         }
         val pipeline = StatusCompressionPipeline(FakeOnDeviceLlm(), UserStatusRepository(dao))
-        // 퇴장 이후 델타에는 정하늘이 없다
-        val merged = pipeline.mergeStatus(profileWithLeaver, UserStatusEntity(AgentFlow.ROOM, participants = stay))
-        assertFalse(merged.participants.contains(leaver))
+        pipeline.rebuild(AgentFlow.ROOM, leaveConversation(), stayIds)
+        val rebuilt = dao.row!!
+        assertFalse(rebuilt.participants.contains(leaver))
+        assertEquals(stay.sorted(), rebuilt.sourceMemberIds)
     }
 
     @Test
     fun `S2-5 정상 - 나간 사람 이름도 여전히 경계에서 마스킹된다`() {
         val leaky = FakeOnDeviceLlm { "정하늘은 빠지고 나머지가 토요일 강남에서 저녁을 먹는다." }
-        val r = AgentFlow.run(leaveConversation(), okGemini, userStatus = profileWithLeaver, llm = leaky)
+        val r = AgentFlow.run(leaveConversation(), okGemini, userStatus = profileWithLeaver, llm = leaky, memberIds = stayIds)
         assertFalse(r.gemini.allSentText().contains("하늘"))
     }
 
-    @Ignore("결함: 퇴장자의 마지막 지역 언급(해운대)이 합의 지역(강남)을 덮음 — lastMention이 발화자 멤버십 무시")
     @Test
     fun `S2-6 경계 - 나간 사람이 마지막에 언급한 지역이 모임 지역을 덮으면 안 된다`() {
         val msgs = listOf(
@@ -175,7 +174,7 @@ class AgentFlowParticipantsDefectTest {
             msg("이지영", "강남 좋아", 2),
             msg(leaver, "나 그날 해운대 가야 돼서 빠질게", 3),
         )
-        val r = AgentFlow.run(msgs, okGemini)
+        val r = AgentFlow.run(msgs, okGemini, memberIds = setOf("김민수", "이지영"))
         assertEquals("강남", r.slot("지역"))
     }
 

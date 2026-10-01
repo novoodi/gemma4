@@ -467,9 +467,16 @@ object PromptSieve {
             ?.takeIf { it in 2..99 }
             ?.let { "${it}명" }
 
-    /** 인원이 명시되지 않았을 때의 폴백 — 발화자 수는 대화 전체에서 세는 게 맞다. */
+    /**
+     * 인원이 명시되지 않았을 때의 폴백 — 발화자 수는 대화 전체에서 세는 게 맞다.
+     * 사람은 **senderId(uid)** 로 센다(2026-10). 이름으로 세면 동명이인이 한 명으로 합쳐진다.
+     * 이름이 빈 발화자는 세지 않는다(시스템 메시지 등). 나간 사람은 호출 전에 이미 빠져 있다(MemberScope).
+     */
     internal fun speakerHeadcount(messages: List<Message>): String? {
-        val speakers = messages.map { it.senderName.trim() }.filter { it.isNotEmpty() }.distinct().size
+        val speakers = messages
+            .filter { it.senderName.isNotBlank() }
+            .map { it.senderId.ifBlank { it.senderName.trim() } }
+            .distinct().size
         return if (speakers >= 2) "${speakers}명 (대화 참여자 기준)" else null
     }
 

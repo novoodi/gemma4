@@ -9,6 +9,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.navoodi.morimi.MoimApp
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.Message
+import com.navoodi.morimi.data.pipeline.MemberScope
 import com.navoodi.morimi.data.pipeline.StatusCompressionPipeline
 import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.data.repository.MetricsRepository.FeedbackTarget
@@ -24,6 +25,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -94,6 +97,15 @@ class ChatViewModel(
 
     private var compressionJob: Job? = null
 
+    // 멤버 변화(이탈·재입장) 시 프로필 재구성 — 앱 스코프 백그라운드, 화면을 막지 않는다.
+    // 끝나기 전에는 오케스트레이터가 오래된 프로필을 쓰지 않는다(MemberScope.profileUsable).
+    private var rebuildJob: Job? = null
+    private var rebuildAttemptedFor: Set<String>? = null
+
+    /** 현재 방 멤버 uid. 방 정보를 아직 못 받았으면 null(멤버 필터 없음 — 이전 동작) */
+    private val currentMemberIds: Set<String>?
+        get() = room.value?.participantUids?.toSet()?.takeIf { it.isNotEmpty() }
+
     // 백그라운드 성향 압축 진행 여부 — "스피너 없는" 플로팅 상태배지 표시용
     private val _isCompressing = MutableStateFlow(false)
     val isCompressing: StateFlow<Boolean> = _isCompressing.asStateFlow()
@@ -123,6 +135,34 @@ class ChatViewModel(
                 Log.e(TAG, "후기 대상 조회 실패", error)
                 _feedbackError.value = "후기 대상을 확인하지 못했습니다. 방에 다시 들어와 주세요."
             }
+        }
+        // 멤버 목록(Firestore participantUids)이 바뀌면 프로필이 아직 유효한지 확인하고 필요하면 재구성
+        viewModelScope.launch {
+            combine(
+                room.map { it?.participantUids?.toSet()?.takeIf { ids -> ids.isNotEmpty() } }.distinctUntilChanged(),
+                messages,
+            ) { members, msgs -> members to msgs }
+                .collect { (members, msgs) ->
+                    if (members != null && msgs.isNotEmpty()) maybeRebuildProfile(members, msgs)
+                }
+        }
+    }
+
+    /**
+     * 나간 사람이 섞였거나(이탈) 빠진 멤버 발언이 있으면(재입장) 현재 멤버 대화로 프로필을 다시 만든다.
+     * 같은 멤버 구성에 대해서는 한 번만 시도한다 — 실패하면 프로필 없이 추천하고, 방에 다시 들어올 때 재시도.
+     */
+    private suspend fun maybeRebuildProfile(members: Set<String>, msgs: List<Message>) {
+        if (rebuildJob?.isActive == true || rebuildAttemptedFor == members) return
+        val status = runCatching { userStatusRepository.getStatus(roomId) }.getOrNull()
+        if (!MemberScope.needsRebuild(status, members, msgs.map { it.senderId }.toSet())) return
+        rebuildAttemptedFor = members
+        val appScope = getApplication<MoimApp>().applicationScope
+        rebuildJob = appScope.launch(Dispatchers.IO) {
+            val result = runCatching { compressionPipeline.rebuild(roomId, msgs, members) }
+                .onFailure { Log.e(TAG, "프로필 재구성 예외 — 프로필 없이 진행", it) }
+                .getOrNull()
+            Log.d(TAG, "프로필 재구성 roomId=$roomId 멤버 ${members.size}명 결과=$result")
         }
     }
 
@@ -190,7 +230,7 @@ class ChatViewModel(
         compressionJob = viewModelScope.launch(Dispatchers.IO) {
             _isCompressing.value = true
             try {
-                compressionPipeline.compress(roomId, msgs)
+                compressionPipeline.compress(roomId, msgs, currentMemberIds)
             } finally {
                 _isCompressing.value = false
             }
@@ -216,7 +256,11 @@ class ChatViewModel(
                 compressionJob?.join()
 
                 val userStatus = userStatusRepository.getStatus(roomId)
-                Log.d(TAG, "orchestrate 시작 — roomId=$roomId userStatus=$userStatus")
+                // 재구성(rebuildJob)은 기다리지 않는다 — 끝나기 전 프로필은 오케스트레이터가 쓰지 않는다
+                val memberIds = currentMemberIds
+                    ?: runCatching { ChatRepository.getRoomById(roomId) }.getOrNull()
+                        ?.participantUids?.toSet()?.takeIf { it.isNotEmpty() }
+                Log.d(TAG, "orchestrate 시작 — roomId=$roomId 멤버=${memberIds?.size} userStatus=$userStatus")
 
                 _debugLog.value = _debugLog.value + AssistantDebugEntry(
                     emoji = "👤",
@@ -232,6 +276,7 @@ class ChatViewModel(
                     override fun onEvent(event: AssistantEvent) {
                         _agentProgress.value = when (event) {
                             is AssistantEvent.OrchestrationStarted  -> "대화 내용을 분석하고 있습니다..."
+                            is AssistantEvent.MembersScoped         -> "현재 멤버의 대화만 추렸습니다..."
                             is AssistantEvent.ContextClassified     -> "모임 성격을 파악했습니다: ${event.label}"
                             is AssistantEvent.CriteriaWeighted      -> "이 상황에 맞는 판단 기준을 세웠습니다..."
                             is AssistantEvent.GemmaSummaryCompleted -> "핵심 내용을 추출했습니다. 클라우드에 연결 중..."
@@ -257,6 +302,14 @@ class ChatViewModel(
                         }
 
                         val entry: AssistantDebugEntry? = when (event) {
+                            is AssistantEvent.MembersScoped ->
+                                AssistantDebugEntry("👥", "현재 멤버 기준", buildString {
+                                    appendLine("멤버 ${event.memberCount}명 · 나간 사람 ${event.departedSenders}명의 메시지 ${event.droppedMessages}건 제외")
+                                    append(
+                                        if (event.profileUsed) "저장된 성향 사용"
+                                        else "저장된 성향 미사용 — 나간 멤버가 섞였을 수 있어 재구성 전까지 쓰지 않음"
+                                    )
+                                })
                             is AssistantEvent.ContextClassified ->
                                 AssistantDebugEntry("🧭", "상황 분류 (온디바이스 — 원문은 기기 안에서만 읽음)", buildString {
                                     appendLine("판정: ${event.label} (${event.context})")
@@ -340,7 +393,8 @@ class ChatViewModel(
                     roomId = roomId,
                     messages = msgs,
                     userStatus = userStatus,
-                    eventTracker = tracker
+                    eventTracker = tracker,
+                    memberIds = memberIds,
                 )) {
                     is OrchestratorResult.Success -> {
                         ChatRepository.saveSummary(result.summary)

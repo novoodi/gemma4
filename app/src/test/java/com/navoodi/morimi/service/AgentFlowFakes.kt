@@ -177,6 +177,7 @@ internal object AgentFlow {
         retriever: FeedbackRetriever = FixedRetriever(),
         llm: FakeOnDeviceLlm = FakeOnDeviceLlm(),
         search: (suspend (String) -> PlaceSearchResult)? = null,
+        memberIds: Set<String>? = null,
     ): FlowRun = runBlocking {
         val events = CopyOnWriteArrayList<AssistantEvent>()
         val orchestrator = AssistantOrchestrator(
@@ -194,6 +195,7 @@ internal object AgentFlow {
             eventTracker = object : AssistantEventTracker {
                 override fun onEvent(event: AssistantEvent) { events += event }
             },
+            memberIds = memberIds,
         )
         FlowRun(result, events.toList(), gemini, llm, world, retriever)
     }

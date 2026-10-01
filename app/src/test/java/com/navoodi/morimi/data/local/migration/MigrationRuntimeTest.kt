@@ -97,6 +97,19 @@ class MigrationRuntimeTest {
         "ALTER TABLE `feedback` ADD COLUMN `rating` INTEGER NOT NULL DEFAULT 0",
     )
 
+    /** v6 = v5 + harness_run 개수 컬럼 5개 + feedback.createdAt (MIGRATION_5_6 본문과 같다) */
+    private val v5ToV6 = listOf("itemCount", "violationItemCount", "rawVerifiedCount", "rawNotFoundCount", "rawUnverifiedCount")
+        .map { "ALTER TABLE `harness_run` ADD COLUMN `$it` INTEGER NOT NULL DEFAULT 0" } +
+        "ALTER TABLE `feedback` ADD COLUMN `createdAt` INTEGER NOT NULL DEFAULT 0"
+
+    /** v7 = v6 + calendar_event (MIGRATION_6_7 본문과 같다) */
+    private val v6ToV7 = listOf(
+        "CREATE TABLE IF NOT EXISTS `calendar_event` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `date` TEXT NOT NULL, " +
+            "`time` TEXT NOT NULL, `location` TEXT NOT NULL, `note` TEXT NOT NULL, `roomId` TEXT, " +
+            "`placeName` TEXT NOT NULL, `placeAddress` TEXT NOT NULL, `placeUrl` TEXT NOT NULL, " +
+            "`category` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+    )
+
     /** 시드한 후기 — 마이그레이션이 이걸 지우면 R2도 실패한다. */
     private val seedDate = "2026-09-01"
     private val seedFeedback = "조용하고 좋았어요"
@@ -113,6 +126,8 @@ class MigrationRuntimeTest {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         v4Tables.forEach(db::execSQL)
                         if (version >= 5) v4ToV5.forEach(db::execSQL)
+                        if (version >= 6) v5ToV6.forEach(db::execSQL)
+                        if (version >= 7) v6ToV7.forEach(db::execSQL)
 
                         // 마이그레이션이 건드리는 테이블마다 최소 1행
                         db.execSQL(
@@ -189,7 +204,7 @@ class MigrationRuntimeTest {
 
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals("최종 버전", 7, sdb.version)
+        assertEquals("최종 버전", 8, sdb.version)
 
         // 새 테이블에 쓰고 읽기 — v6 신규 컬럼 포함
         sdb.execSQL(
@@ -222,7 +237,7 @@ class MigrationRuntimeTest {
 
         val db = openLikeProduction()
         val sdb = db.openHelper.readableDatabase
-        assertEquals(7, sdb.version)
+        assertEquals(8, sdb.version)
 
         sdb.query("SELECT `feedback`, `createdAt` FROM `feedback`").use {
             assertTrue("v5→v6에서 후기가 사라졌다", it.moveToFirst())
@@ -245,7 +260,7 @@ class MigrationRuntimeTest {
 
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals(7, sdb.version)
+        assertEquals(8, sdb.version)
 
         // v7 신규 테이블 — 방 일정(roomId 있음)과 직접 추가 일정(roomId NULL) 모두
         sdb.execSQL(
@@ -270,7 +285,7 @@ class MigrationRuntimeTest {
     fun `신규 설치 경로에서 모든 테이블이 생성된다`() {
         val db = openLikeProduction()
         val sdb = db.openHelper.writableDatabase
-        assertEquals(7, sdb.version)
+        assertEquals(8, sdb.version)
 
         val expected = setOf(
             "user_status", "feedback", "recommended_room",
@@ -325,11 +340,61 @@ class MigrationRuntimeTest {
             .map { it.startVersion to it.endVersion }
             .toSet()
         assertNotNull(registered)
-        (4 until 7).forEach { v ->
+        (4 until 8).forEach { v ->
             assertTrue(
                 "v$v → v${v + 1} 마이그레이션이 등록돼 있지 않다 — 파괴적 폴백이 탄다",
                 registered.contains(v to v + 1)
             )
         }
+    }
+
+    // ── v7 → v8: user_status.sourceMemberIds (2026-10, 나간 멤버 반영 결함) ─────────────
+
+    @Test
+    fun `v7 DB를 열면 기존 프로필이 보존되고 출처는 빈 목록으로 읽힌다`() {
+        createLegacyDb(7)
+
+        val db = openLikeProduction()
+        assertEquals(8, db.openHelper.readableDatabase.version)
+        // Room DAO·타입 컨버터 경로로 읽는다 — 컬럼 기본값('')이 컨버터 형식과 맞는지까지 확인
+        val status = kotlinx.coroutines.runBlocking { db.userStatusDao().getByRoomId("room-1") }
+        assertNotNull("v7→v8에서 프로필이 사라졌다 — 파괴적 폴백이 탔을 수 있다", status)
+        assertEquals(listOf("좋아요: 조용한 곳"), status!!.preferences)
+        assertEquals(listOf("가"), status.participants)
+        assertTrue("기존 행의 출처는 미기록(빈 목록)", status.sourceMemberIds.isEmpty())
+        db.openHelper.readableDatabase.query("SELECT `feedback` FROM `feedback`").use {
+            assertTrue("v7→v8에서 후기가 사라졌다", it.moveToFirst())
+            assertEquals(seedFeedback, it.getString(0))
+        }
+        db.close()
+    }
+
+    @Test
+    fun `v7에서 올라온 DB에 출처 멤버를 저장하고 다시 읽을 수 있다`() {
+        createLegacyDb(7)
+
+        val db = openLikeProduction()
+        val dao = db.userStatusDao()
+        kotlinx.coroutines.runBlocking {
+            dao.upsert(com.navoodi.morimi.data.local.UserStatusEntity(
+                roomId = "room-1", preferences = listOf("좋아요: 고기"), sourceMemberIds = listOf("uid-a", "uid-b"),
+            ))
+            assertEquals(listOf("uid-a", "uid-b"), dao.getByRoomId("room-1")!!.sourceMemberIds)
+        }
+        db.close()
+    }
+
+    @Test
+    fun `v4에서 v8까지 한 번에 올라와도 프로필과 후기가 유지된다`() {
+        createLegacyDb(4)
+
+        val db = openLikeProduction()
+        val status = kotlinx.coroutines.runBlocking { db.userStatusDao().getByRoomId("room-1") }
+        assertNotNull(status)
+        assertTrue(status!!.sourceMemberIds.isEmpty())
+        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM `feedback`").use {
+            assertTrue(it.moveToFirst()); assertEquals(1, it.getInt(0))
+        }
+        db.close()
     }
 }

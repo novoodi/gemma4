@@ -7,6 +7,7 @@ import com.navoodi.morimi.data.model.Message
 import com.navoodi.morimi.data.model.RecommendedPlace
 import com.navoodi.morimi.data.model.VerificationStatus
 import com.navoodi.morimi.data.pipeline.FeedbackRetriever
+import com.navoodi.morimi.data.pipeline.MemberScope
 import com.navoodi.morimi.data.pipeline.OnDeviceLlmPort
 import com.navoodi.morimi.data.repository.MetricsRepository
 import org.json.JSONArray
@@ -27,6 +28,16 @@ sealed class OrchestratorResult {
 // ── 에이전트 생명주기 이벤트 ──────────────────────────────────────────────────
 sealed class AssistantEvent {
     data class OrchestrationStarted(val roomId: String, val messageCount: Int) : AssistantEvent()
+    /**
+     * 현재 멤버 기준 범위 결정(2026-10, DEFECT_TEST S2). 나간 사람 메시지 [droppedMessages]건을 뺐고,
+     * 프로필 선호·불호를 썼는지([profileUsed]) — 나간 사람이 섞였을 수 있는 프로필은 쓰지 않는다.
+     */
+    data class MembersScoped(
+        val memberCount: Int,
+        val droppedMessages: Int,
+        val departedSenders: Int,
+        val profileUsed: Boolean,
+    ) : AssistantEvent()
     data class GemmaSummaryCompleted(
         val summary: String,
         val redactions: Int = 0,
@@ -242,14 +253,45 @@ class AssistantOrchestrator(
         messages: List<Message>,
         userStatus: UserStatusEntity?,
         chatDate: LocalDate = LocalDate.now(),
-        eventTracker: AssistantEventTracker? = null
+        eventTracker: AssistantEventTracker? = null,
+        /**
+         * 현재 방 멤버 uid(Firestore participantUids). null이면 멤버 정보 없음 — 이전 동작(전원 반영).
+         * 주어지면 나간 사람의 메시지는 요약·분류·인원·지역·선호에서 빠지고, 그 사람이 섞였을 수 있는
+         * 프로필의 선호·불호는 쓰지 않는다. 이름 마스킹 명단에는 나간 사람도 남긴다(프라이버시 우선).
+         */
+        memberIds: Set<String>? = null,
     ): OrchestratorResult = withContext(Dispatchers.IO) {
 
         eventTracker?.onEvent(AssistantEvent.OrchestrationStarted(roomId, messages.size))
 
+        // ⓪ 멤버 범위 — 나간 사람의 말은 기기 안에서 먼저 걸러낸다(동조 맥락은 인용으로 보존)
+        val historySenders = messages.map { it.senderId }.filter { it.isNotBlank() }.toSet()
+        val scoped = MemberScope.scope(messages, memberIds)
+        val profileUsable = MemberScope.profileUsable(userStatus, memberIds, historySenders)
+        // 이 아래에서 선호·불호·참가자 판단은 profile만 쓴다(나간 사람이 섞였을 수 있으면 null)
+        val profile = if (profileUsable) userStatus else null
+        if (memberIds != null) {
+            val departed = messages.filter { it.senderId !in memberIds }
+            if (!profileUsable) Log.w(TAG, "나간 멤버가 섞였을 수 있는 프로필 — 선호·불호 미사용(재구성 대기)")
+            eventTracker?.onEvent(
+                AssistantEvent.MembersScoped(
+                    memberCount = memberIds.size,
+                    droppedMessages = departed.size,
+                    departedSenders = departed.map { it.senderId }.toSet().size,
+                    profileUsed = profileUsable && userStatus != null,
+                )
+            )
+            if (scoped.isEmpty()) {
+                // 전원 이탈·남은 멤버가 말한 적 없음 — 추천할 대화가 없으니 클라우드를 부르지 않는다
+                val reason = "현재 멤버의 대화가 없습니다"
+                eventTracker?.onEvent(AssistantEvent.OrchestrationFinished(false, 0, reason))
+                return@withContext OrchestratorResult.Failed(reason, 0)
+            }
+        }
+
         // ① 상황 판정 — 원문을 읽지만 **기기 안에서만** 읽는다. 밖으로 나가는 건 상황 라벨 하나.
         //    밥 약속과 술 약속을 같은 요청으로 취급하지 않기 위한 첫 분기점이다.
-        val classification = ContextClassifier.classify(messages)
+        val classification = ContextClassifier.classify(scoped)
         val meetingContext = classification.context
         Log.d(TAG, "상황 분류: ${meetingContext.name} conf=${classification.confidence} 근거=${classification.signals}")
         eventTracker?.onEvent(
@@ -280,11 +322,12 @@ class AssistantOrchestrator(
 
         // 채팅 원문은 온디바이스에서 익명화 — 이 결과만 클라우드로 전송
         Log.d(TAG, "Gemma 1차 요약 시작 (온디바이스)")
-        val gemmaSum = onDeviceLlm.summarizeForPrivacy(messages)
+        val gemmaSum = onDeviceLlm.summarizeForPrivacy(scoped)
         Log.d(TAG, "Gemma 요약 완료: ${gemmaSum.take(80)}")
 
         // 프라이버시 방화벽 최종 게이트 — Gemma가 지시를 어기고 이름/연락처를 흘리더라도
         // 클라우드(Gemini) 전송 직전 결정론적 스크러버가 마스킹한다 (belt-and-suspenders).
+        // 마스킹 명단은 나간 사람까지 — 요약·후기에 그 이름이 남아 있을 수 있다
         val knownNames = buildKnownNames(messages, userStatus)
         val scrub = PiiScrubber.scrub(gemmaSum, knownNames)
         if (scrub.hadPii) {
@@ -311,9 +354,9 @@ class AssistantOrchestrator(
         // ④ 거름망 — 자유 텍스트를 고정 스키마 블록으로 찍어낸다.
         //    "이번 주 토요일" 같은 상대 표현은 여기서 절대 날짜로 환산된다(모델에게 산수를 맡기지 않는다).
         val sieved = PromptSieve.sieve(
-            messages = messages,
+            messages = scoped,
             safeSummary = safeSummary,
-            userStatus = userStatus,
+            userStatus = profile,
             chatDate = chatDate,
             ahp = learned.result,
             classification = classification,
@@ -372,7 +415,7 @@ class AssistantOrchestrator(
                 val reflection = ReflectionService.reflect(
                     places = verifiedSummary.places,
                     activities = verifiedSummary.activities,
-                    preferences = userStatus?.preferences ?: emptyList(),
+                    preferences = profile?.preferences ?: emptyList(),
                 )
                 Log.d(TAG, "시도 $attempt Reflection: passed=${reflection.passed} 위반=${reflection.violations.size}건")
                 eventTracker?.onEvent(
@@ -389,7 +432,7 @@ class AssistantOrchestrator(
                     places = verifiedSummary.places,
                     context = meetingContext,
                     ahp = learned.result,
-                    preferences = userStatus?.preferences ?: emptyList(),
+                    preferences = profile?.preferences ?: emptyList(),
                     pastImpressions = impressions,
                 )
                 val enriched = applyRanking(verifiedSummary, ranked)
@@ -411,7 +454,7 @@ class AssistantOrchestrator(
                     Log.d(TAG, "Guardrail+Reflection 통과 ✓ — 총 $attempt 회")
                     recordMetrics(
                         roomId, meetingContext, enriched,
-                        userStatus?.preferences ?: emptyList(),
+                        profile?.preferences ?: emptyList(),
                         attempt, learned.result.cr, rawTally, eventTracker,
                     )
                     eventTracker?.onEvent(AssistantEvent.OrchestrationFinished(true, attempt))
@@ -448,7 +491,7 @@ class AssistantOrchestrator(
             Log.w(TAG, "Reflection 제약 미충족이나 장소 유효 — 최선의 결과로 폴백 반환")
             recordMetrics(
                 roomId, meetingContext, it,
-                userStatus?.preferences ?: emptyList(),
+                profile?.preferences ?: emptyList(),
                 MAX_ATTEMPTS, learned.result.cr, rawTally, eventTracker,
             )
             eventTracker?.onEvent(AssistantEvent.OrchestrationFinished(true, MAX_ATTEMPTS))
