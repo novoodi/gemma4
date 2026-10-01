@@ -82,14 +82,12 @@ class AgentFlowGeminiDefectTest {
         assertTrue(failed(r)!!.reason.contains("비어"))
     }
 
-    @Ignore("결함: 빈 JSON({})이 추천 0곳 성공으로 처리됨 — Guardrail이 후보 0건을 통과로 판정")
     @Test
     fun `S6-8 이상 - 빈 JSON 객체는 추천 0곳 성공이 아니라 재시도·실패여야 한다`() {
         val r = AgentFlow.run(dinner, ScriptedGemini.of(Gem.text("{}")))
         assertTrue("추천 0곳이 성공 처리됨: ${r.result}", r.success == null || r.places.isNotEmpty())
     }
 
-    @Ignore("결함: 장소 배열이 비어도 성공 처리됨 — Guardrail이 후보 0건을 통과로 판정")
     @Test
     fun `S6-9 이상 - 장소 배열이 비면 성공이 아니라 재시도·실패여야 한다`() {
         val r = AgentFlow.run(dinner, ScriptedGemini.of(Gem.final(emptyList())))
@@ -113,7 +111,6 @@ class AgentFlowGeminiDefectTest {
         assertEquals(3, r.success!!.attempts)
     }
 
-    @Ignore("결함: 25자 초과 장소명은 검증 대상에서 빠져 UNVERIFIED로 통과 — GuardrailService 길이 필터")
     @Test
     fun `S6-12 이상 - 25자 넘는 지어낸 장소명이 검증 없이 통과하면 안 된다`() {
         val fake = "강남역 앞 아주 오래된 전통 한정식 코스 요리 전문점 별관"
@@ -121,7 +118,6 @@ class AgentFlowGeminiDefectTest {
         assertFalse("검증 안 된 긴 이름이 성공 결과에 포함", r.placeNames.contains(fake))
     }
 
-    @Ignore("결함: 6번째 이후 장소는 검증 없이 통과 — GuardrailService MAX_CANDIDATES=5")
     @Test
     fun `S6-13 이상 - 6번째 장소도 검증돼야 한다(지어낸 이름 통과 금지)`() {
         val places = listOf("미미식당", "소담식당", "서울식당", "달빛술집", "조용한찻집", "유령식당")

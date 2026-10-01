@@ -1,11 +1,14 @@
 package com.navoodi.morimi.service
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 class GuardrailServiceTest {
 
@@ -58,13 +61,6 @@ class GuardrailServiceTest {
         val r = service("미미식당" to found(place("미미식당", "부산 해운대구 1"))).verify(listOf("미미식당"), "미정")
         assertTrue(r.passed)
         assertEquals(PlaceStatus.OPEN, statuses(r)["미미식당"])
-    }
-
-    @Test
-    fun `정상 - 후보가 없으면 통과`() = runBlocking {
-        val r = service().verify(emptyList(), "서울")
-        assertTrue(r.passed)
-        assertTrue(r.verifiedPlaces.isEmpty())
     }
 
     // ── 비정상 ────────────────────────────────────────────
@@ -157,12 +153,12 @@ class GuardrailServiceTest {
     // ── 이상 입력 ─────────────────────────────────────────
 
     @Test
-    fun `이상 입력 - 길이 범위 밖 이름은 검색하지 않음`() = runBlocking {
+    fun `이상 입력 - 길이로 거르지 않고 1자·26자 이름도 검색한다 (공백만 제외)`() = runBlocking {
         val fake = FakeSearch(emptyMap())
         val r = GuardrailService(fake.fn).verify(listOf("A", "가".repeat(26), "   "), "서울")
-        assertTrue(r.passed)
-        assertTrue(r.verifiedPlaces.isEmpty())
-        assertTrue(fake.calls.isEmpty())
+        assertFalse(r.passed)
+        assertEquals(setOf("A", "가".repeat(26)), fake.calls)
+        assertTrue(r.verifiedPlaces.all { it.status == PlaceStatus.CLOSED })
     }
 
     @Test
@@ -174,11 +170,11 @@ class GuardrailServiceTest {
     }
 
     @Test
-    fun `이상 입력 - 후보는 최대 5건만 검증`() = runBlocking {
+    fun `이상 입력 - 후보 개수 상한 없이 8건 모두 검증`() = runBlocking {
         val fake = FakeSearch(emptyMap())
         val r = GuardrailService(fake.fn).verify((1..8).map { "식당$it" }, "서울")
-        assertEquals(5, r.verifiedPlaces.size)
-        assertEquals(5, fake.calls.size)
+        assertEquals(8, r.verifiedPlaces.size)
+        assertEquals(8, fake.calls.size)
     }
 
     @Test
@@ -241,5 +237,199 @@ class GuardrailServiceTest {
         assertTrue(r.passed)
         assertTrue(r.verifiedPlaces.all { it.status == PlaceStatus.UNKNOWN })
         assertEquals("", r.feedbackForRetry)
+    }
+
+    // ══ 결함 수정 보강 (DEFECT_TEST_2026-10 S6-8·S6-9·S6-12·S6-13) ══════════════
+
+    /** 검색어를 순서대로 모두 기록(중복 포함). [real]에 있는 이름만 서울에 실존. */
+    private class RecordingSearch(vararg real: String) {
+        private val places = real.map { KakaoPlace(it, "", "", "서울 강남구 1", "", "") }
+        val queries: MutableList<String> = CopyOnWriteArrayList()
+        val fn: suspend (String) -> PlaceSearchResult = { q ->
+            queries += q
+            PlaceSearchResult.Found(places.filter { PlaceMatcher.nameMatches(q, it.name) })
+        }
+    }
+
+    // ── 결함 1: 추천 0곳이 성공 처리됨 ─────────────────────────────────────
+
+    @Test
+    fun `0곳 - 빈 목록은 실패이고 1곳 이상 추천하라는 피드백`() = runBlocking {
+        val search = RecordingSearch()
+        val r = GuardrailService(search.fn).verify(emptyList(), "서울")
+        assertFalse(r.passed)
+        assertTrue(r.verifiedPlaces.isEmpty())
+        assertTrue(r.feedbackForRetry.contains("1곳 이상"))
+        assertTrue(search.queries.isEmpty())
+    }
+
+    @Test
+    fun `0곳 - 공백 이름만 있으면 0곳과 같다`() = runBlocking {
+        val search = RecordingSearch()
+        val r = GuardrailService(search.fn).verify(listOf("", "   ", "\t\n"), "서울")
+        assertFalse(r.passed)
+        assertEquals(GuardrailService.EMPTY_FEEDBACK, r.feedbackForRetry)
+        assertTrue(search.queries.isEmpty())
+    }
+
+    @Test
+    fun `0곳 - 피드백은 존재하지 않음·지역 밖 문구와 섞이지 않는다`() = runBlocking {
+        val r = GuardrailService(RecordingSearch().fn).verify(emptyList(), "서울")
+        assertFalse(r.feedbackForRetry.contains("존재하지 않는"))
+        assertFalse(r.feedbackForRetry.contains("모임 지역"))
+    }
+
+    @Test
+    fun `0곳 경계 - 실존 1곳이면 통과`() = runBlocking {
+        val r = GuardrailService(RecordingSearch("미미식당").fn).verify(listOf("미미식당"), "서울")
+        assertTrue(r.passed)
+        assertEquals(PlaceStatus.OPEN, statuses(r)["미미식당"])
+    }
+
+    @Test
+    fun `0곳 경계 - 1곳이 검증 불가(장애)면 0곳이 아니라 UNKNOWN 통과`() = runBlocking {
+        val r = GuardrailService { PlaceSearchResult.Failed("UNAVAILABLE") }.verify(listOf("미미식당"), "서울")
+        assertTrue(r.passed)
+        assertEquals(PlaceStatus.UNKNOWN, statuses(r)["미미식당"])
+    }
+
+    // ── 결함 2: 6번째 이후 장소 미검증 ─────────────────────────────────────
+
+    @Test
+    fun `전부 검증 - 8곳 모두 실존이면 8곳 모두 OPEN`() = runBlocking {
+        val names = (1..8).map { "가게$it" }
+        val search = RecordingSearch(*names.toTypedArray())
+        val r = GuardrailService(search.fn).verify(names, "서울")
+        assertTrue(r.passed)
+        assertEquals(8, search.queries.size)
+        assertTrue(r.verifiedPlaces.all { it.status == PlaceStatus.OPEN })
+    }
+
+    @Test
+    fun `전부 검증 - 6번째가 지어낸 이름이면 CLOSED로 실패`() = runBlocking {
+        val real = listOf("미미식당", "소담식당", "서울식당", "달빛술집", "조용한찻집")
+        val r = GuardrailService(RecordingSearch(*real.toTypedArray()).fn).verify(real + "유령식당", "서울")
+        assertFalse(r.passed)
+        assertEquals(PlaceStatus.CLOSED, statuses(r)["유령식당"])
+        assertTrue(r.feedbackForRetry.contains("유령식당"))
+    }
+
+    @Test
+    fun `전부 검증 - 결과 순서는 입력 순서를 유지`() = runBlocking {
+        val names = (1..12).map { "가게$it" }
+        val r = GuardrailService(RecordingSearch(*names.toTypedArray()).fn).verify(names, "서울")
+        assertEquals(names, r.verifiedPlaces.map { it.name })
+    }
+
+    @Test
+    fun `전부 검증 - 20곳이어도 동시 검색은 상한 이하`() = runBlocking {
+        val inFlight = AtomicInteger(0)
+        val peak = AtomicInteger(0)
+        val searched = CopyOnWriteArrayList<String>()
+        val svc = GuardrailService { q ->
+            val now = inFlight.incrementAndGet()
+            peak.accumulateAndGet(now) { a, b -> maxOf(a, b) }
+            delay(20)
+            searched += q
+            inFlight.decrementAndGet()
+            PlaceSearchResult.Found(listOf(KakaoPlace(q, "", "", "서울 강남구 1", "", "")))
+        }
+        val names = (1..20).map { "가게$it" }
+        val r = svc.verify(names, "서울")
+        assertTrue(r.passed)
+        assertEquals(20, searched.size)
+        assertTrue("동시 ${peak.get()}건", peak.get() in 2..GuardrailService.MAX_CONCURRENT_SEARCHES)
+    }
+
+    @Test
+    fun `전부 검증 - 같은 장소명은 한 번만 검색`() = runBlocking {
+        val search = RecordingSearch("미미식당")
+        val r = GuardrailService(search.fn).verify(
+            listOf("미미식당", "미미식당 - 분위기 좋음", "미미식당 — 맛집", " 미미식당 "), "서울",
+        )
+        assertEquals(listOf("미미식당"), search.queries)
+        assertEquals(3, r.verifiedPlaces.size) // " 미미식당 "은 트림 후 중복
+        assertTrue(r.verifiedPlaces.all { it.status == PlaceStatus.OPEN })
+    }
+
+    @Test
+    fun `전부 검증 - 12곳 중 일부 장애는 그 장소만 UNKNOWN`() = runBlocking {
+        val names = (1..12).map { "가게$it" }
+        val svc = GuardrailService { q ->
+            if (q == "가게7" || q == "가게11") PlaceSearchResult.Failed("DEADLINE_EXCEEDED")
+            else PlaceSearchResult.Found(listOf(KakaoPlace(q, "", "", "서울 강남구 1", "", "")))
+        }
+        val r = svc.verify(names, "서울")
+        assertTrue(r.passed)
+        assertEquals(
+            setOf("가게7", "가게11"),
+            r.verifiedPlaces.filter { it.status == PlaceStatus.UNKNOWN }.map { it.name }.toSet(),
+        )
+        assertEquals(10, r.verifiedPlaces.count { it.status == PlaceStatus.OPEN })
+    }
+
+    // ── 결함 3: 25자 넘는 이름 미검증 / 이름 뒤 이유 ──────────────────────────
+
+    @Test
+    fun `긴 이름 - 26자 넘는 지어낸 이름도 검색해서 CLOSED`() = runBlocking {
+        val fake = "강남역 앞 아주 오래된 전통 한정식 코스 요리 전문점 별관"
+        val search = RecordingSearch("미미식당")
+        val r = GuardrailService(search.fn).verify(listOf(fake), "서울")
+        assertTrue(fake.length > 25)
+        assertEquals(listOf(fake), search.queries)
+        assertFalse(r.passed)
+        assertEquals(PlaceStatus.CLOSED, statuses(r)[fake])
+    }
+
+    @Test
+    fun `긴 이름 - 26자 넘는 실존 상호는 OPEN`() = runBlocking {
+        val longReal = "더 그레이트 코리안 바비큐 하우스 앤 키친 강남"
+        assertTrue(longReal.length > 25)
+        val r = GuardrailService(RecordingSearch(longReal).fn).verify(listOf(longReal), "서울")
+        assertTrue(r.passed)
+        assertEquals(PlaceStatus.OPEN, statuses(r)[longReal])
+    }
+
+    @Test
+    fun `이유 분리 - 하이픈 뒤 이유는 떼고 장소명만 검색, 결과 이름은 원문 유지`() = runBlocking {
+        val raw = "미미식당 - 분위기 좋음"
+        val search = RecordingSearch("미미식당")
+        val r = GuardrailService(search.fn).verify(listOf(raw), "서울")
+        assertEquals(listOf("미미식당"), search.queries)
+        assertEquals(PlaceStatus.OPEN, statuses(r)[raw])
+    }
+
+    @Test
+    fun `이유 분리 - 대시·콜론·괄호 주소 형태도 장소명만 검색`() = runBlocking {
+        val raws = listOf("소담식당 — 조용함", "서울식당: 가성비", "달빛술집 (서울 마포구 서교동)")
+        val search = RecordingSearch("소담식당", "서울식당", "달빛술집")
+        val r = GuardrailService(search.fn).verify(raws, "서울")
+        assertEquals(setOf("소담식당", "서울식당", "달빛술집"), search.queries.toSet())
+        assertTrue(r.passed)
+    }
+
+    @Test
+    fun `이유 분리 - 지어낸 이름에 이유가 붙으면 피드백에는 장소명만`() = runBlocking {
+        val r = GuardrailService(RecordingSearch("미미식당").fn).verify(listOf("유령식당 - 분위기 좋음"), "서울")
+        assertFalse(r.passed)
+        assertTrue(r.feedbackForRetry.contains("유령식당"))
+        assertFalse(r.feedbackForRetry.contains("분위기 좋음"))
+    }
+
+    @Test
+    fun `긴 이름 - 상호명 상한을 넘는 이름은 검색 없이 존재하지 않음`() = runBlocking {
+        val absurd = "가".repeat(GuardrailService.MAX_PLACE_NAME_LEN + 1)
+        val search = RecordingSearch()
+        val r = GuardrailService(search.fn).verify(listOf(absurd), "서울")
+        assertTrue(search.queries.isEmpty())
+        assertEquals(PlaceStatus.CLOSED, statuses(r)[absurd])
+    }
+
+    @Test
+    fun `이유 분리 - 공백 없는 하이픈은 이름의 일부로 둔다`() = runBlocking {
+        val search = RecordingSearch("W-카페")
+        val r = GuardrailService(search.fn).verify(listOf("W-카페"), "서울")
+        assertEquals(listOf("W-카페"), search.queries)
+        assertTrue(r.passed)
     }
 }

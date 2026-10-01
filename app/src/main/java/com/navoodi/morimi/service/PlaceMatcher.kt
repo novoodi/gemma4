@@ -127,6 +127,21 @@ object PlaceMatcher {
         return tokens.drop(1).joinToString(" ")
     }
 
+    /**
+     * 추천 문자열에서 장소명만 뗀다 — "미미식당 - 분위기 좋음", "미미식당 — 이유", "미미식당 (강남구 …)".
+     *
+     * 구분자: em/en 대시(—, –, ―), 콜론, 세로선, 공백으로 둘러싼 ASCII 하이픈(" - "),
+     * 공백 뒤 여는 괄호(" ("). 공백 없는 하이픈·괄호는 이름의 일부일 수 있어 자르지 않는다
+     * ("W-카페", "미미식당(본점)"). 잘라서 남는 게 없으면 원문을 그대로 쓴다.
+     */
+    fun placeNameOf(raw: String): String {
+        val s = raw.trim()
+        val cut = PLACE_NAME_SEPARATOR.find(s)?.range?.first ?: return s
+        return s.substring(0, cut).trim().ifEmpty { s }
+    }
+
+    private val PLACE_NAME_SEPARATOR = Regex("""[—–―:|]|\s-\s|\s-$|\s\(""")
+
     /** 추천명과 검색 결과 이름이 같은 가게를 가리키는가 */
     fun nameMatches(recommended: String, candidate: String): Boolean {
         val cand = normalizeName(candidate)

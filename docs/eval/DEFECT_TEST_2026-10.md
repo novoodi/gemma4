@@ -34,8 +34,9 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 
 ## 결과 요약
 
-- 추가 케이스 **59건** · 통과 31 · **실패 28** (`@Ignore`) = 결함 26 + 한계 2(S4-3, S5-6)
+- 추가 케이스 **59건** · 최초 실행 통과 31 · **실패 28** (`@Ignore`) = 결함 26 + 한계 2(S4-3, S5-6)
 - 주담당별 실패 수: 최예인 19 · 유제혁 5 · 박종섭 4 · 양예찬 0 (UI는 JVM 대상 아님, S2-1 공동)
+- **수정 현황**: 박종섭 담당 4건(S6-8, S6-9, S6-12, S6-13) 수정 완료, `@Ignore` 해제 후 통과 → 남은 `@Ignore` 24건
 
 ## 결과 표
 
@@ -117,12 +118,12 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 | S6-5 비정상 | 깨진 JSON 반복 | 3회 후 "파싱 실패" Failed | 기대대로 | 통과 | — | — |
 | S6-6 근접 | 깨진 JSON 1회 → 정상 | 2회 만에 복구 | 기대대로 | 통과 | — | — |
 | S6-7 비정상 | 빈 응답(candidates 없음) | 3회 후 Failed("비어") | 기대대로 | 통과 | — | — |
-| S6-8 이상 | 빈 JSON `{}` | 재시도·실패 | **추천 0곳 Success** | **결함** | `GuardrailService.verify`(후보 0건 = 통과), `AssistantOrchestrator` | 박종섭 (공동: 최예인) |
-| S6-9 이상 | `recommendedPlaces: []` | 재시도·실패 | **추천 0곳 Success** | **결함** | 같음 | 박종섭 (공동: 최예인) |
+| S6-8 이상 | 빈 JSON `{}` | 재시도·실패 | **추천 0곳 Success** → 수정 후: Guardrail 실패 → 3회 후 Failed | **수정됨(커밋 후 해시 기입)** | `GuardrailService.verify`(후보 0건 = 통과), `AssistantOrchestrator` | 박종섭 (공동: 최예인) |
+| S6-9 이상 | `recommendedPlaces: []` | 재시도·실패 | **추천 0곳 Success** → 수정 후: "1곳 이상 추천" 피드백으로 재시도 → Failed | **수정됨(커밋 후 해시 기입)** | 같음 | 박종섭 (공동: 최예인) |
 | S6-10 근접 | Reflection만 실패 ×2 → 3회차 깨진 JSON | 보존한 폴백으로 Success | **Failed** — catch 분기가 fallbackSuccess를 무시 | **결함** | `AssistantOrchestrator.orchestrate` catch 블록 | 최예인 |
 | S6-11 정상 | Reflection만 계속 실패 | 3회 후 폴백 Success | 기대대로 | 통과 | — | — |
-| S6-12 이상 | 25자 초과 지어낸 장소명 | 검증 없이 통과 금지 | **UNVERIFIED로 통과** — 길이 필터로 검증 대상에서 빠짐 | **결함** | `GuardrailService.verify` (`2..25`) | 박종섭 |
-| S6-13 이상 | 6곳 추천, 6번째가 가짜 | 6번째도 검증 | **검증 없이 통과** | **결함** | `GuardrailService` (`MAX_CANDIDATES = 5`) | 박종섭 |
+| S6-12 이상 | 25자 초과 지어낸 장소명 | 검증 없이 통과 금지 | **UNVERIFIED로 통과** — 길이 필터로 검증 대상에서 빠짐 → 수정 후: 검색해서 CLOSED | **수정됨(커밋 후 해시 기입)** | `GuardrailService.verify` (`2..25`) | 박종섭 |
+| S6-13 이상 | 6곳 추천, 6번째가 가짜 | 6번째도 검증 | **검증 없이 통과** → 수정 후: 전부 검증, 6번째 CLOSED | **수정됨(커밋 후 해시 기입)** | `GuardrailService` (`MAX_CANDIDATES = 5`) | 박종섭 |
 | S6-14 서버 장애 | 장소 검색 프록시 전면 장애 | UNKNOWN으로 1회 통과(재시도 없음) | 기대대로 | 통과 | — | — |
 | S6-14b 서버 장애 | 검색 "결과 없음" | 장애와 구분해 재시도 → 3회 후 Failed | 기대대로 | 통과 | — | — |
 | S6-15 서버 장애 | Gemini 프록시 계속 실패 | 3회 후 Failed | 기대대로 | 통과 | — | — |
@@ -134,7 +135,7 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 
 1. **프라이버시 (S1-8, S5-7)** — 명단 밖 실명이 디바이스 경계를 넘는다. CLAUDE.md 불변 원칙 위반이다.
    명단을 넓히거나(후기 작성 당시 방의 참가자, 대화 본문의 호격 패턴) 스크러버의 미등록 이름 탐지를 강화해야 한다.
-2. **Guardrail 우회 (S6-4, S6-8/9, S6-12, S6-13)** — 지어낸 장소·다른 지역 장소·빈 결과가 "성공"으로 나간다.
+2. **Guardrail 우회 (S6-4, ~~S6-8/9, S6-12, S6-13~~ 수정됨)** — 지어낸 장소·다른 지역 장소·빈 결과가 "성공"으로 나간다. 남은 것은 S6-4(오케스트레이터가 지역을 넘기지 않음).
 3. **퇴장자 반영 불가 (S2-1~S2-4, S2-6)** — 멤버 목록과 선호의 사람별 귀속이 없는 구조 문제다. 한 곳만 고쳐서는 해결되지 않는다.
 4. **순서 의존 (S3-1, S3-2, S3-5)** — `orchestrate()` 진입 시 `timestamp`(동률이면 id) 정렬 한 줄로 대부분 해소된다.
 5. **피드백 미반영 (S5-2, S5-3, S5-4, S5-8)** — 불만 장소에 대한 결정론적 배제가 없다.
@@ -149,3 +150,30 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 | 실제 Gemma 요약·압축 (`LlmService`) | 온디바이스 모델·GPU 필요(에뮬레이터 미지원). S4-7의 컨텍스트 초과 영향은 **실기기 확인 필요** |
 | 방 나가기 실제 흐름 (`ChatRepository.leaveRoom` → Firestore) | Firebase 필요. 코드상 `user_status`를 갱신하지 않는 것만 확인 |
 | UI(`ChatViewModel`, Compose 화면) — 양예찬 담당 | Android 의존. 빈 대화 차단이 UI에만 있다는 점은 코드로 확인(`ChatViewModel.summarize`) |
+
+## Guardrail 결함 수정 (박종섭 담당, 2026-10-01)
+
+수정 파일: `GuardrailService.kt`, `PlaceMatcher.kt`. `PlaceStatus` · `PlaceVerification` · `GuardrailResult` 형식과 `GuardrailService()` 기본 생성자는 그대로다.
+
+| 결함 | 수정 내용 | 보강 테스트 |
+|---|---|---|
+| S6-8, S6-9 추천 0곳 성공 | 공백을 제외하고 후보가 0곳이면 `passed=false`, 피드백 "실제로 존재하는 장소를 1곳 이상 … 추천하세요" | `GuardrailServiceTest` "0곳" 5건 + 오케스트레이터 2건 |
+| S6-13 6번째 이후 미검증 | `MAX_CANDIDATES` 제거, 전부 검증. 동시 검색 상한 `MAX_CONCURRENT_SEARCHES = 4`(Semaphore). 같은 장소명은 한 번만 검색 | "전부 검증" 6건 + 오케스트레이터 1건 |
+| S6-12 25자 초과 미검증 | 길이 필터 제거. `PlaceMatcher.placeNameOf`로 이유(" - ", "—", ":", "(주소)" 등)를 떼고 장소명만 검색. `PlaceVerification.name`은 원문 그대로(호출자 매핑 유지). 60자 초과는 상호명으로 볼 수 없어 검색 없이 존재하지 않음 처리 — 프록시가 200자 초과를 오류로 거절하면 UNKNOWN(통과)이 되는 경로를 막기 위함 | "긴 이름"·"이유 분리" 6건 + `PlaceMatcherTest` "장소명" 5건 + 오케스트레이터 1건 |
+
+기존 `GuardrailServiceTest` 중 이전 동작을 고정하던 3건은 새 기대값으로 바꿨다.
+- "후보가 없으면 통과" — 삭제(0곳 실패 테스트로 대체)
+- "길이 범위 밖 이름은 검색하지 않음" → "1자·26자 이름도 검색"
+- "최대 5건만 검증" → "8건 모두 검증"
+
+### 팀원에게 넘길 내용 (다른 담당 파일 — 이번에 수정하지 않음)
+
+**최예인 — `AssistantOrchestrator`**
+1. **S6-17 연계**: Guardrail은 이제 "미미식당 - 조용하고 맛있음"을 "미미식당"으로 검색해 VERIFIED를 준다. 그런데 오케스트레이터는 장소명에 이유까지 붙여 저장한다(`parseGeminiPlaceEntry`가 ASCII 하이픈을 구분자로 보지 않음). 카드·캘린더에 이유가 붙은 이름이 표시되고, `findKakaoMatch`도 긴 이름으로 매칭한다. `PlaceMatcher.placeNameOf`를 재사용하면 규칙이 한 곳으로 모인다.
+2. **이름 매핑 불변식**: `applyVerification`은 `PlaceVerification.name == RecommendedPlace.name`으로 상태를 찾는다. Guardrail은 원문 이름을 그대로 돌려주므로 지금은 맞는다. 위 1을 고치면 Guardrail에 넘기는 이름도 같은 값이 되어야 한다.
+3. **S6-4**: 도구 호출이 없으면 `verify(city = "미정")`이 되어 지역 검사가 생략된다. `sieved.slot(FrameSlot.WHERE)`를 폴백으로 넘기면 Guardrail 쪽은 수정 없이 동작한다(동네명 → 시·도 환산은 `PlaceMatcher`에 이미 있음).
+4. **호출량**: 이제 추천된 장소 전부를 검증하므로 카카오 호출이 시도당 장소 수만큼, 최대 3회 시도까지 나간다(동시 4건 제한). 프롬프트의 "장소 2~3곳"이 지켜지는 한 이전과 비슷하다.
+5. **0곳 실패 메시지**: 3회 모두 0곳이면 최종 사유가 "최대 재시도 횟수(3) 초과"로만 남는다. 사용자에게 "추천할 장소를 찾지 못했다"를 구분해 보여주려면 오케스트레이터에서 사유를 나눠야 한다.
+
+**양예찬 — UI**
+- `GuardrailEvaluated.feedback`에 새 문구("추천 장소가 한 곳도 없습니다 …")가 나올 수 있다. 디버그 패널은 그대로 출력하므로 수정이 꼭 필요하지는 않다.

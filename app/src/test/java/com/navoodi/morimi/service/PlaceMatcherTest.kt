@@ -236,4 +236,39 @@ class PlaceMatcherTest {
         assertFalse(PlaceMatcher.isGenericOnly("서울식당"))
         assertFalse(PlaceMatcher.isGenericOnly(""))
     }
+
+    // ── 추천 문자열에서 장소명 떼기 ───────────────────────────────────────
+
+    @Test
+    fun `장소명 - 구분자 뒤 이유를 뗀다`() {
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당 - 분위기 좋음"))
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당 — 이유"))
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당–이유"))
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당: 가성비"))
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당 | 조용함"))
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당 (서울 강남구 역삼동 14-11)"))
+    }
+
+    @Test
+    fun `장소명 - 이름 안의 하이픈·괄호는 보존`() {
+        assertEquals("W-카페", PlaceMatcher.placeNameOf("W-카페"))
+        assertEquals("미미식당(본점)", PlaceMatcher.placeNameOf("미미식당(본점)"))
+    }
+
+    @Test
+    fun `장소명 - 구분자가 없거나 앞이 비면 원문(트림)`() {
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("  미미식당  "))
+        assertEquals("— 이유만", PlaceMatcher.placeNameOf("— 이유만"))
+        assertEquals("", PlaceMatcher.placeNameOf("   "))
+    }
+
+    @Test
+    fun `장소명 - 끝에 매달린 하이픈은 뗀다`() {
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당 -"))
+    }
+
+    @Test
+    fun `장소명 - 첫 구분자에서 자른다`() {
+        assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당 - 이유 — 추가 설명 (주소)"))
+    }
 }
