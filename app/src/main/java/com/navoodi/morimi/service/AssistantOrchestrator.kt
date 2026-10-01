@@ -117,18 +117,40 @@ class AssistantOrchestrator(
          * 이름이 맞으면 주소·지도 링크·좌표를 채운다(좌표는 지도 핀용 — 깨진 값은 KakaoPlace에서 이미 null).
          * internal — JVM 단위 테스트에서 직접 검증.
          */
-        internal fun toRecommendedPlace(geminiStr: String, kakaoPlaces: List<KakaoPlace>): RecommendedPlace {
+        internal fun toRecommendedPlace(
+            geminiStr: String,
+            kakaoPlaces: List<KakaoPlace>,
+            city: String = "미정",
+        ): RecommendedPlace {
             val (pName, reason) = parseGeminiPlaceEntry(geminiStr)
-            val matched = findKakaoMatch(pName, kakaoPlaces)
-            return RecommendedPlace(
-                name = pName.ifBlank { geminiStr },
-                address = matched?.let { it.roadAddress.ifBlank { it.address } } ?: "",
-                reason = reason,
-                placeUrl = matched?.url ?: "",
-                latitude = matched?.latitude,
-                longitude = matched?.longitude,
-            )
+            val matched = findKakaoMatch(pName, kakaoPlaces, city)
+            return RecommendedPlace(name = pName.ifBlank { geminiStr }, reason = reason).withKakao(matched)
         }
+
+        /**
+         * searchPlace 결과로 채우지 못한 장소를 Guardrail이 이미 찾아 둔 가게로 채운다(추가 카카오 호출 없음).
+         *
+         * 어느 쪽 매칭이든 같은 규칙([PlaceMatcher.bestMatch])으로 고른 가게다. 이미 searchPlace 매칭이
+         * 있는 장소는 덮어쓰지 않되, 같은 가게(같은 placeUrl)인데 좌표만 빠졌다면 좌표를 보충한다 —
+         * 다른 가게의 좌표를 섞지 않기 위해 링크로 동일성을 확인한다.
+         */
+        internal fun fillFromGuardrail(place: RecommendedPlace, matched: Map<String, KakaoPlace>): RecommendedPlace {
+            val g = matched[place.name.trim()] ?: return place
+            val hasSearchMatch = place.placeUrl.isNotBlank() || place.address.isNotBlank()
+            return when {
+                !hasSearchMatch -> place.withKakao(g)
+                place.geoPoint == null && place.placeUrl.isNotBlank() && place.placeUrl == g.url ->
+                    place.copy(latitude = g.latitude, longitude = g.longitude)
+                else -> place
+            }
+        }
+
+        private fun RecommendedPlace.withKakao(k: KakaoPlace?): RecommendedPlace = if (k == null) this else copy(
+            address = k.roadAddress.ifBlank { k.address },
+            placeUrl = k.url,
+            latitude = k.latitude,
+            longitude = k.longitude,
+        )
 
         private fun parseGeminiPlaceEntry(s: String): Pair<String, String> {
             // 장소명 = 주소 괄호'(' 또는 이유 구분 대시(—/–) 중 가장 먼저 나오는 지점 이전.
@@ -143,10 +165,13 @@ class AssistantOrchestrator(
             return (name.ifBlank { s.trim() }) to reason
         }
 
-        private fun findKakaoMatch(name: String, candidates: List<KakaoPlace>): KakaoPlace? {
+        /**
+         * Guardrail과 같은 규칙([PlaceMatcher.bestMatch] — 정규화 이름 일치 + 모임 시·도)으로 고른다.
+         * 예전 단순 포함 비교는 "카페"에 "카페 모모"를, 서울 모임의 "미미식당"에 부산 지점을 붙였다.
+         */
+        private fun findKakaoMatch(name: String, candidates: List<KakaoPlace>, city: String): KakaoPlace? {
             if (name.isBlank() || candidates.isEmpty()) return null
-            return candidates.firstOrNull { it.name == name }
-                ?: candidates.firstOrNull { it.name.contains(name) || name.contains(it.name) }
+            return PlaceMatcher.bestMatch(name, candidates, city)
         }
     }
 
@@ -338,7 +363,10 @@ class AssistantOrchestrator(
                     AssistantEvent.GuardrailEvaluated(attempt, guardrail.passed, guardrail.feedbackForRetry, unknownCount)
                 )
 
-                val verifiedSummary = applyVerification(callResult.summary, guardrail.verifiedPlaces)
+                // 검증 상태 병합 + searchPlace로 못 채운 주소·좌표를 Guardrail 매칭 가게로 보충(추가 호출 없음)
+                val verifiedSummary = applyVerification(callResult.summary, guardrail.verifiedPlaces).let { s ->
+                    s.copy(places = s.places.map { fillFromGuardrail(it, guardrail.matchedPlaces) })
+                }
 
                 // 검증 2 — Reflection: 랭킹·지표와 같은 장소 정보를 검사한다 (소프트 게이트)
                 val reflection = ReflectionService.reflect(
@@ -538,7 +566,7 @@ class AssistantOrchestrator(
             items.forEach { appendLine("• $it") }
         }.trim()
 
-        val placesStructured = places.map { geminiStr -> toRecommendedPlace(geminiStr, collectedKakaoPlaces) }
+        val placesStructured = places.map { geminiStr -> toRecommendedPlace(geminiStr, collectedKakaoPlaces, city) }
 
         Log.d(TAG, "JSON 파싱 완료 — 장소 ${places.size}곳(매칭 ${placesStructured.count { it.placeUrl.isNotBlank() }}개), 활동 ${activities.size}개, 준비물 ${items.size}개")
 

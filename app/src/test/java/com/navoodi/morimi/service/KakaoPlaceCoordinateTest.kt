@@ -1,11 +1,11 @@
 package com.navoodi.morimi.service
 
+import com.navoodi.morimi.data.model.RecommendedPlace
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -117,10 +117,103 @@ class KakaoPlaceCoordinateTest {
         assertNull(AssistantOrchestrator.toRecommendedPlace("미미식당", emptyList()).geoPoint)
     }
 
-    @Ignore("결함: 업종 일반명사('카페')만으로도 포함 매칭돼 다른 가게(카페 모모)의 주소·좌표가 붙음 — AssistantOrchestrator.findKakaoMatch")
     @Test
-    fun `매칭 결함 - 일반명사 '카페'가 다른 가게 '카페 모모'의 좌표를 가져오면 안 된다`() {
+    fun `매칭 - 일반명사 '카페'가 다른 가게 '카페 모모'의 좌표를 가져오면 안 된다`() {
         val p = AssistantOrchestrator.toRecommendedPlace("카페", kakao)
         assertNull("엉뚱한 가게 좌표가 붙음: ${p.address}", p.geoPoint)
+    }
+
+    // ── findKakaoMatch = PlaceMatcher.bestMatch (Guardrail과 같은 규칙) ──────────
+
+    private fun kp(name: String, address: String, url: String, lat: Double? = 37.5, lng: Double? = 127.0) =
+        KakaoPlace(name, "", "", address, "", url, lat, lng)
+
+    @Test
+    fun `매칭 - 일반명사 두 개('카페 바')도 다른 가게에 붙지 않는다`() {
+        val p = AssistantOrchestrator.toRecommendedPlace("카페 바", listOf(kp("카페 바 모노", "서울 마포구 1", "u1")))
+        assertNull(p.geoPoint)
+        assertEquals("", p.placeUrl)
+    }
+
+    @Test
+    fun `매칭 - 동명 가게가 다른 시도에만 있으면 붙이지 않는다`() {
+        val busan = listOf(kp("미미식당", "부산 해운대구 1", "busan", 35.16, 129.16))
+        val p = AssistantOrchestrator.toRecommendedPlace("미미식당", busan, city = "서울")
+        assertNull(p.geoPoint)
+        assertEquals("", p.address)
+    }
+
+    @Test
+    fun `매칭 - 동명 가게가 여러 시도에 있으면 모임 시도 가게를 고른다`() {
+        val both = listOf(kp("미미식당", "부산 해운대구 1", "busan", 35.16, 129.16), kp("미미식당", "서울 강남구 1", "seoul", 37.50, 127.03))
+        val p = AssistantOrchestrator.toRecommendedPlace("미미식당", both, city = "강남")
+        assertEquals("seoul", p.placeUrl)
+        assertEquals(37.50, p.latitude!!, 1e-9)
+    }
+
+    @Test
+    fun `매칭 - 모임 지역 미정이면 지역 검사 없이 이름으로 고른다`() {
+        val busan = listOf(kp("미미식당", "부산 해운대구 1", "busan", 35.16, 129.16))
+        assertEquals("busan", AssistantOrchestrator.toRecommendedPlace("미미식당", busan, city = "미정").placeUrl)
+    }
+
+    @Test
+    fun `매칭 - 정확히 같은 이름을 포함 관계보다 먼저 고른다`() {
+        val list = listOf(kp("원조 미미식당", "서울 강남구 1", "wonjo"), kp("미미식당", "서울 강남구 2", "exact"))
+        assertEquals("exact", AssistantOrchestrator.toRecommendedPlace("미미식당", list, city = "서울").placeUrl)
+    }
+
+    @Test
+    fun `매칭 - 지점명이 붙은 검색 결과도 같은 가게로 본다`() {
+        val list = listOf(kp("스타벅스 홍대입구역점", "서울 마포구 1", "sb"))
+        assertEquals("sb", AssistantOrchestrator.toRecommendedPlace("스타벅스 홍대점", list, city = "홍대").placeUrl)
+    }
+
+    // ── Guardrail 매칭 가게로 보충 (fillFromGuardrail) ─────────────────────────
+
+    private val gMimi = kp("미미식당", "서울 강남구 역삼동 1", "https://place.map.kakao.com/10", 37.50, 127.03)
+
+    @Test
+    fun `보충 - searchPlace 매칭이 없으면 Guardrail 가게로 주소·링크·좌표를 채운다`() {
+        val p = AssistantOrchestrator.fillFromGuardrail(RecommendedPlace(name = "미미식당", reason = "r"), mapOf("미미식당" to gMimi))
+        assertEquals("서울 강남구 역삼동 1", p.address)
+        assertEquals("https://place.map.kakao.com/10", p.placeUrl)
+        assertEquals(37.50, p.latitude!!, 1e-9)
+        assertEquals("r", p.reason)
+    }
+
+    @Test
+    fun `보충 - searchPlace 매칭이 있으면 다른 가게로 덮어쓰지 않는다`() {
+        val fromSearch = RecommendedPlace(name = "미미식당", address = "서울 서초구 2", placeUrl = "https://place.map.kakao.com/99", latitude = 37.48, longitude = 127.01)
+        assertEquals(fromSearch, AssistantOrchestrator.fillFromGuardrail(fromSearch, mapOf("미미식당" to gMimi)))
+    }
+
+    @Test
+    fun `보충 - 같은 가게(같은 링크)인데 좌표만 빠졌으면 좌표만 채운다`() {
+        val noGeo = RecommendedPlace(name = "미미식당", address = "검색 주소", placeUrl = "https://place.map.kakao.com/10")
+        val p = AssistantOrchestrator.fillFromGuardrail(noGeo, mapOf("미미식당" to gMimi))
+        assertEquals("검색 주소", p.address)
+        assertEquals(127.03, p.longitude!!, 1e-9)
+    }
+
+    @Test
+    fun `보충 - 다른 가게 링크인데 좌표가 빠졌으면 섞지 않는다`() {
+        val other = RecommendedPlace(name = "미미식당", address = "검색 주소", placeUrl = "https://place.map.kakao.com/77")
+        assertNull(AssistantOrchestrator.fillFromGuardrail(other, mapOf("미미식당" to gMimi)).geoPoint)
+    }
+
+    @Test
+    fun `보충 - Guardrail 매칭이 없으면(UNKNOWN·CLOSED) 그대로`() {
+        val bare = RecommendedPlace(name = "미미식당")
+        assertEquals(bare, AssistantOrchestrator.fillFromGuardrail(bare, emptyMap()))
+    }
+
+    @Test
+    fun `보충 - Guardrail 가게에 좌표가 없으면 주소·링크만 채운다`() {
+        val p = AssistantOrchestrator.fillFromGuardrail(
+            RecommendedPlace(name = "미미식당"), mapOf("미미식당" to gMimi.copy(latitude = null, longitude = null)),
+        )
+        assertEquals("서울 강남구 역삼동 1", p.address)
+        assertNull(p.geoPoint)
     }
 }

@@ -187,14 +187,29 @@ object PlaceMatcher {
      * 주소로 시·도를 알 수 없는 결과는 지역 불일치로 단정하지 않는다(이름 일치만으로 인정).
      */
     fun evaluate(recommended: String, results: List<KakaoPlace>, city: String?): Outcome {
-        val named = results.filter { nameMatches(recommended, it.name) }
-        if (named.isEmpty()) return Outcome.NOT_FOUND
-        val target = provinceOfCity(city) ?: return Outcome.MATCHED
-        val inRegion = named.any { place ->
-            val p = provinceOfAddress(place.address) ?: provinceOfAddress(place.roadAddress)
-            p == null || p == target
+        if (results.none { nameMatches(recommended, it.name) }) return Outcome.NOT_FOUND
+        return if (bestMatch(recommended, results, city) != null) Outcome.MATCHED else Outcome.OUT_OF_REGION
+    }
+
+    /**
+     * [evaluate]가 MATCHED라고 본 근거 가게 하나 — 주소·지도 링크·좌표를 옮겨 담을 대상.
+     * 이름 일치 + 모임 시·도(모르면 생략, 주소로 시·도를 알 수 없는 결과는 인정)인 결과 중에서
+     * 정규화 이름이 완전히 같은 것을 먼저, 없으면 검색 순위가 가장 높은 것을 고른다.
+     * Guardrail과 오케스트레이터가 같은 규칙으로 "이 추천 = 이 가게"를 정하게 하기 위함이다
+     * (예전 오케스트레이터는 단순 포함 비교라 "카페"에 "카페 모모"가 붙었다).
+     */
+    fun bestMatch(recommended: String, results: List<KakaoPlace>, city: String?): KakaoPlace? {
+        val target = provinceOfCity(city)
+        val candidates = results.filter { place ->
+            nameMatches(recommended, place.name) && (target == null || inProvince(place, target))
         }
-        return if (inRegion) Outcome.MATCHED else Outcome.OUT_OF_REGION
+        val key = normalizeName(recommended)
+        return candidates.firstOrNull { normalizeName(it.name) == key } ?: candidates.firstOrNull()
+    }
+
+    private fun inProvince(place: KakaoPlace, target: String): Boolean {
+        val p = provinceOfAddress(place.address) ?: provinceOfAddress(place.roadAddress)
+        return p == null || p == target
     }
 
     private fun tokens(raw: String): List<String> =

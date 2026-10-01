@@ -14,7 +14,13 @@ data class PlaceVerification(val name: String, val status: PlaceStatus)
 data class GuardrailResult(
     val passed: Boolean,
     val verifiedPlaces: List<PlaceVerification>,
-    val feedbackForRetry: String
+    val feedbackForRetry: String,
+    /**
+     * OPEN으로 판정한 장소 → 그 근거가 된 카카오 가게 ([PlaceVerification.name]과 같은 키).
+     * 오케스트레이터가 추가 검색 없이 주소·지도 링크·좌표를 채우는 데 쓴다.
+     * CLOSED·UNKNOWN 장소는 들어가지 않는다 — 존재가 확인되지 않은 가게의 위치를 붙이지 않기 위함.
+     */
+    val matchedPlaces: Map<String, KakaoPlace> = emptyMap(),
 )
 
 /**
@@ -68,13 +74,16 @@ class GuardrailService(
         // PlaceVerification.name은 원래 문자열 그대로 둔다 — 호출자가 그 이름으로 결과를 다시 찾는다.
         val queryOf = candidates.associateWith { PlaceMatcher.placeNameOf(it) }
         val gate = Semaphore(MAX_CONCURRENT_SEARCHES)
-        val outcomeByQuery: Map<String, PlaceMatcher.Outcome?> = coroutineScope {
+        val checkByQuery: Map<String, Check> = coroutineScope {
             queryOf.values.distinct()
                 .map { q -> async { q to gate.withPermit { check(q, city) } } }
                 .awaitAll()
                 .toMap()
         }
-        val outcomes = candidates.map { it to outcomeByQuery.getValue(queryOf.getValue(it)) }
+        val outcomes = candidates.map { it to checkByQuery.getValue(queryOf.getValue(it)).outcome }
+        val matched = candidates.mapNotNull { name ->
+            checkByQuery.getValue(queryOf.getValue(name)).place?.let { name to it }
+        }.toMap()
 
         val verified = outcomes.map { (name, outcome) ->
             PlaceVerification(
@@ -99,17 +108,22 @@ class GuardrailService(
 
         Log.d(
             TAG,
-            "검증 완료 — passed=$passed 검색 ${outcomeByQuery.size}회 notFound=${notFound.size}건 " +
+            "검증 완료 — passed=$passed 검색 ${checkByQuery.size}회 notFound=${notFound.size}건 " +
                 "outOfRegion=${outOfRegion.size}건 unknown=${unknownCount}건",
         )
-        return GuardrailResult(passed = passed, verifiedPlaces = verified, feedbackForRetry = feedback)
+        return GuardrailResult(
+            passed = passed, verifiedPlaces = verified, feedbackForRetry = feedback, matchedPlaces = matched,
+        )
     }
 
-    /** 검색 + 매칭. 검색 오류(프록시 장애·예외)는 null = 검증 불가. */
-    private suspend fun check(name: String, city: String): PlaceMatcher.Outcome? {
+    /** 검색 1회의 판정과, MATCHED일 때 그 근거 가게 */
+    private data class Check(val outcome: PlaceMatcher.Outcome?, val place: KakaoPlace? = null)
+
+    /** 검색 + 매칭. 검색 오류(프록시 장애·예외)는 outcome null = 검증 불가. */
+    private suspend fun check(name: String, city: String): Check {
         if (name.length > MAX_PLACE_NAME_LEN) {
             Log.w(TAG, "장소명 ${name.length}자 — 실제 상호명으로 볼 수 없어 존재하지 않음 처리")
-            return PlaceMatcher.Outcome.NOT_FOUND
+            return Check(PlaceMatcher.Outcome.NOT_FOUND)
         }
         val result = try {
             searchPlaces(name)
@@ -117,14 +131,18 @@ class GuardrailService(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "검색 예외 name=$name — 검증 불가(UNKNOWN)", e)
-            return null
+            return Check(null)
         }
         return when (result) {
             is PlaceSearchResult.Failed -> {
                 Log.w(TAG, "검색 실패 name=$name reason=${result.reason} — 검증 불가(UNKNOWN)")
-                null
+                Check(null)
             }
-            is PlaceSearchResult.Found -> PlaceMatcher.evaluate(name, result.places, city)
+            is PlaceSearchResult.Found -> {
+                val outcome = PlaceMatcher.evaluate(name, result.places, city)
+                val place = if (outcome == PlaceMatcher.Outcome.MATCHED) PlaceMatcher.bestMatch(name, result.places, city) else null
+                Check(outcome, place)
+            }
         }
     }
 

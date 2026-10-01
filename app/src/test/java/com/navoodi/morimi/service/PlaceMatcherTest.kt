@@ -271,4 +271,44 @@ class PlaceMatcherTest {
     fun `장소명 - 첫 구분자에서 자른다`() {
         assertEquals("미미식당", PlaceMatcher.placeNameOf("미미식당 - 이유 — 추가 설명 (주소)"))
     }
+
+    // ── bestMatch: 근거 가게 고르기 ──────────────────────────────────────
+
+    @Test
+    fun `근거 가게 - 정규화 이름이 같은 가게를 우선`() {
+        val r = listOf(place("원조 미미식당"), place("미미식당 강남점"), place("미미식당"))
+        assertEquals("미미식당 강남점", PlaceMatcher.bestMatch("미미식당", r, "서울")!!.name)
+    }
+
+    @Test
+    fun `근거 가게 - 이름 일치가 없으면 null`() {
+        assertEquals(null, PlaceMatcher.bestMatch("미미식당", listOf(place("미소식당")), "서울"))
+    }
+
+    @Test
+    fun `근거 가게 - 업종명뿐인 추천은 다른 가게를 고르지 않는다`() {
+        assertEquals(null, PlaceMatcher.bestMatch("카페", listOf(place("카페 모모")), "서울"))
+    }
+
+    @Test
+    fun `근거 가게 - 모임 시도 밖 동명 가게는 고르지 않는다`() {
+        val r = listOf(place("미미식당", "부산 해운대구 1"))
+        assertEquals(null, PlaceMatcher.bestMatch("미미식당", r, "서울"))
+        assertEquals("부산 해운대구 1", PlaceMatcher.bestMatch("미미식당", r, "미정")!!.address)
+    }
+
+    @Test
+    fun `근거 가게 - evaluate와 일관 (MATCHED일 때만 근거 존재)`() {
+        val cases = listOf(
+            Triple("미미식당", listOf(place("미미식당")), "서울"),
+            Triple("미미식당", listOf(place("미미식당", "부산 해운대구 1")), "서울"),
+            Triple("미미식당", listOf(place("미소식당")), "서울"),
+            Triple("서울 식당", listOf(place("서울식당")), "서울"),
+            Triple("카페", listOf(place("카페 모모")), "미정"),
+        )
+        cases.forEach { (rec, results, city) ->
+            val matched = PlaceMatcher.evaluate(rec, results, city) == Outcome.MATCHED
+            assertEquals("$rec/$city", matched, PlaceMatcher.bestMatch(rec, results, city) != null)
+        }
+    }
 }

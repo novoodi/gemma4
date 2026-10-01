@@ -551,7 +551,11 @@ JVM 테스트가 전부 `ClassNotFoundException`으로 실패했다. README의 �
 
 **남은 리스크**:
 1. 실기기 확인 전 — WebView에서 SDK 로드, 콘솔 도메인(`http://localhost`) 인증
-2. 좌표는 searchPlace 도구로 모은 결과와 이름이 맞을 때만 채워진다. 모델이 도구를 안 쓰면 핀이 없다(대체 목록 표시).
-   Guardrail 검색 결과의 좌표를 쓰면 보완되지만 `GuardrailResult` 형식 변경이 필요하다
-3. `findKakaoMatch`의 포함 매칭이 일반명사("카페")에 다른 가게 좌표를 붙인다(`KakaoPlaceCoordinateTest` @Ignore)
+2. ~~좌표는 searchPlace 도구로 모은 결과와 이름이 맞을 때만 채워진다. 모델이 도구를 안 쓰면 핀이 없다(대체 목록 표시).~~
+   **해결됨 (2026-10-01)**: `GuardrailResult.matchedPlaces`(기본값 `emptyMap()`, 기존 필드 유지)를 추가했다. Guardrail이 OPEN으로 확인한 카카오 가게를 담는다.
+   오케스트레이터 `fillFromGuardrail`이 searchPlace로 못 채운 주소·링크·좌표를 이 값으로 채운다. 추가 카카오 호출은 없다.
+   UNKNOWN·CLOSED 장소는 위치를 붙이지 않고, 다른 가게 데이터는 섞지 않는다(같은 placeUrl일 때만 좌표 보충) — `GuardrailLocationReuseTest`
+3. ~~`findKakaoMatch`의 포함 매칭이 일반명사("카페")에 다른 가게 좌표를 붙인다.~~
+   **해결됨 (2026-10-01)**: `findKakaoMatch`를 `PlaceMatcher.bestMatch`로 교체해 Guardrail과 같은 규칙(정규화 이름 일치 + 모임 시·도)을 쓴다.
+   업종명뿐인 추천과 다른 시·도의 동명 가게에는 위치를 붙이지 않는다. `KakaoPlaceCoordinateTest`의 @Ignore를 해제했고 통과한다
 4. 지도 타일 요청으로 장소 좌표가 카카오에 전달된다. 채팅 원문이 아니라 공개 장소 좌표라 프라이버시 방화벽 대상은 아니다
