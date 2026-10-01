@@ -102,13 +102,13 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 | 시나리오 | 케이스 | 기대 결과 | 실제 결과 | 결함 여부 | 원인 파일 | 담당 |
 |---|---|---|---|---|---|---|
 | S5-1 정상 | 별점 1 불만 후기 | 다음 프롬프트 RAG 섹션에 후기·별점 포함 | 기대대로 | 통과 | — | — |
-| S5-2 비정상 | 모델이 불만 장소(미미식당)를 다시 추천 | 최종 결과에서 제외(또는 재시도) | **포함됨**(순위만 2위로) → 수정 후: 결과에서 제외(재시도 시 다른 장소) | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator`/`ReflectionService` (피드백 배제 게이트 없음) | 최예인 |
-| S5-3 비정상 | 불만 "미미식당 강남점" → 추천 "미미식당 역삼점" | 비슷한 곳도 제외 | **포함됨** → 수정 후: 같은 상호 다른 지점도 제외 | **수정됨(커밋 후 해시 기입)** | 같음 | 최예인 |
-| S5-4 근접 | 불만 후기에 조사가 붙은 이름("미미식당은") | 랭킹 감점 | **감점 없음**(1위 유지) → 수정 후: 조사 무관 인식 — 제외(랭킹 감점도 조사 처리) | **수정됨(커밋 후 해시 기입)** | `PlaceRanker.pastSatisfaction` (토큰 매칭이 조사를 처리하지 않음) | 최예인 |
+| S5-2 비정상 | 모델이 불만 장소(미미식당)를 다시 추천 | 최종 결과에서 제외(또는 재시도) | **포함됨**(순위만 2위로) → 수정 후: 결과에서 제외(재시도 시 다른 장소) | **수정됨(d4d8358)** | `AssistantOrchestrator`/`ReflectionService` (피드백 배제 게이트 없음) | 최예인 |
+| S5-3 비정상 | 불만 "미미식당 강남점" → 추천 "미미식당 역삼점" | 비슷한 곳도 제외 | **포함됨** → 수정 후: 같은 상호 다른 지점도 제외 | **수정됨(d4d8358)** | 같음 | 최예인 |
+| S5-4 근접 | 불만 후기에 조사가 붙은 이름("미미식당은") | 랭킹 감점 | **감점 없음**(1위 유지) → 수정 후: 조사 무관 인식 — 제외(랭킹 감점도 조사 처리) | **수정됨(d4d8358)** | `PlaceRanker.pastSatisfaction` (토큰 매칭이 조사를 처리하지 않음) | 최예인 |
 | S5-5 정상 | 띄어 쓴 이름("미미식당 너무…") | 랭킹 감점 | 기대대로 | 통과 | — | — |
 | S5-6 근접 | 별점 없는(0점) 불만 "최악이었음" | 감점 | 감점 없음(설계상 미평가는 중립) | **한계** | `PlaceRanker`/`PastImpression` | 최예인 |
 | S5-7 이상 | 다른 방 후기 속 제3자 실명("지훈이랑") | 경계에서 마스킹 | **"지훈"이 Gemini로 전송** → 수정 후: 마스킹 | **수정됨(4f317fe)** | `PiiScrubber` (명단이 현재 방 기준: `buildKnownNames`) | 유제혁 (공동: 최예인) |
-| S5-8 비정상 | 실제 `KeywordFallbackRetriever`로 장소 불만 후기 검색 | 회수되어 프롬프트에 포함 | **회수 안 됨** — 쿼리가 장소명 없는 익명 요약문이라 겹치는 키워드 없음 → 수정 후: 불만 채널로 항상 회수 | **수정됨(커밋 후 해시 기입)** | `AssistantOrchestrator`(쿼리 구성)/`KeywordFallbackRetriever` | 최예인 |
+| S5-8 비정상 | 실제 `KeywordFallbackRetriever`로 장소 불만 후기 검색 | 회수되어 프롬프트에 포함 | **회수 안 됨** — 쿼리가 장소명 없는 익명 요약문이라 겹치는 키워드 없음 → 수정 후: 불만 채널로 항상 회수 | **수정됨(d4d8358)** | `AssistantOrchestrator`(쿼리 구성)/`KeywordFallbackRetriever` | 최예인 |
 | S5-9 정상 | 별점 5 만족 후기 | 해당 장소 1위 | 기대대로 | 통과 | — | — |
 
 ### 시나리오 6 — Gemini 비정상 응답 · Guardrail · 재시도 · 최종 실패
@@ -134,6 +134,7 @@ ContextClassifier·PromptSieve·PiiScrubber·Reflection·AHP·PlaceRanker는 **�
 | S6-16 서버 장애 | 모델이 도구만 무한 호출 | 왕복 상한으로 종료(3×9=27회 호출) | 기대대로 | 통과 | — | — |
 | S6-17 근접 | "미미식당 - 조용하고 맛있음"(ASCII 하이픈) | 장소명 "미미식당" | **이유까지 장소명에 저장** | **결함** | `AssistantOrchestrator.parseGeminiPlaceEntry` | 최예인 |
 | S6-18 이상 | 장소 배열에 숫자·객체 원소 혼입 | 문자열 원소는 살림 | **시도 전체 폐기 ×3 → Failed** | **결함** | `AssistantOrchestrator.stringList`(`getString`) | 최예인 |
+| M-1 근접 (지도 작업 중 발견) | findKakaoMatch 업종명 오매칭 — 추천명 "카페" | 다른 가게의 주소·좌표를 붙이지 않음 | **"카페 모모"의 주소·좌표를 가져옴** (발견: `KakaoPlaceCoordinateTest`, 지도 작업 중) | **수정됨(60e9798)** — `PlaceMatcher.bestMatch`로 Guardrail과 같은 규칙으로 통일 | `AssistantOrchestrator.findKakaoMatch` | - |
 
 ## 우선순위 제안
 
