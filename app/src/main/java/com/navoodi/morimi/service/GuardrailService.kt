@@ -105,6 +105,7 @@ class GuardrailService(
         val unknownCount = verified.count { it.status == PlaceStatus.UNKNOWN }
         val passed = notFound.isEmpty() && outOfRegion.isEmpty()
         val feedback = if (passed) "" else buildFeedback(notFound, outOfRegion, city)
+//      val notfound = namesWith(PlaceMatcher.Outcom.NOT_FOUND)
 
         Log.d(
             TAG,

@@ -18,6 +18,10 @@ object WeatherService {
     private const val TAG = "WeatherService"
     private const val FN = "weatherMidFcst"
     private const val TIMEOUT_SEC = 30L
+    /** 중기예보가 담는 범위 — 발표일 기준 4일 후부터 10일 후까지 */
+    private const val MIN_DAY = 4
+    private const val MAX_DAY = 10
+    private val TM_FC_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmm")
 
     // 중기 육상예보 구역코드
     private val landRegionMap = mapOf(
@@ -91,17 +95,43 @@ object WeatherService {
         else "$c: 해당 지역 예보 미지원 (다른 지역 날씨로 대체하지 않았습니다)"
     }
 
-    // 중기예보 발표시각 (하루 2회: 06시, 18시)
-    // 0~5시에는 오늘 06시 발표본이 아직 없으므로 전날 18시 발표본을 사용해야 한다.
-    private fun getTmFc(): String {
-        val now = LocalDateTime.now()
-        val (baseDate, baseHour) = when {
-            now.hour >= 18 -> now.toLocalDate() to 18
-            now.hour >= 6  -> now.toLocalDate() to 6
-            else           -> now.toLocalDate().minusDays(1) to 18  // 0~5시: 전날 18시 발표본
+    /**
+     * [now] 시점에 쓸 수 있는 가장 최근 중기예보 발표시각 (하루 2회: 06시, 18시).
+     * 0~5시에는 오늘 06시 발표본이 아직 없으므로 전날 18시 발표본을 쓴다.
+     */
+    internal fun issuedAt(now: LocalDateTime): LocalDateTime {
+        val today = now.toLocalDate()
+        return when {
+            now.hour >= 18 -> today.atTime(18, 0)
+            now.hour >= 6  -> today.atTime(6, 0)
+            else           -> today.minusDays(1).atTime(18, 0)
         }
-        return baseDate.format(DateTimeFormatter.BASIC_ISO_DATE) +
-            String.format("%02d00", baseHour)
+    }
+
+    /** 프록시에 보낼 발표시각 (YYYYMMDDHHmm) */
+    internal fun tmFcOf(now: LocalDateTime): String = issuedAt(now).format(TM_FC_FORMAT)
+
+    /**
+     * [target] 날짜의 예보 필드 번호 (wf{n}·rnSt{n}·taMin{n}의 n).
+     * 필드 번호는 오늘이 아니라 발표일(tmFc 날짜) 기준이다 — 0~5시에는 전날 발표본을 쓰므로
+     * 오늘 기준으로 세면 하루 앞 날짜의 예보를 읽게 된다.
+     */
+    internal fun forecastDay(target: LocalDate, now: LocalDateTime): Int =
+        ChronoUnit.DAYS.between(issuedAt(now).toLocalDate(), target).toInt()
+
+    /**
+     * 조회할 수 없는 날짜면 안내 문구, 조회할 수 있으면 null.
+     * 중기예보는 발표일 기준 [MIN_DAY]~[MAX_DAY]일 후만 담는다. 범위도 발표일 기준으로 본다
+     * (0~5시에는 오늘+3일이 전날 발표본의 4일차라 조회되고, 오늘+10일은 11일차라 없다).
+     */
+    internal fun rangeNotice(target: LocalDate, now: LocalDateTime): String? {
+        val day = forecastDay(target, now)
+        return when {
+            target.isBefore(now.toLocalDate()) -> "이미 지난 날짜입니다"
+            day < MIN_DAY -> "$target 날씨: 중기예보는 ${MIN_DAY}일 이후부터 제공됩니다"
+            day > MAX_DAY -> "$target 는 중기예보 범위(최대 ${MAX_DAY}일)를 초과합니다"
+            else -> null
+        }
     }
 
     /**
@@ -158,7 +188,8 @@ object WeatherService {
         return CloudProxy.callJson(FN, data, TIMEOUT_SEC)
     }
 
-    suspend fun getWeather(city: String, date: String): String {
+    /** [now]는 테스트에서 시각을 주입하기 위한 것 — 기본값은 현재 시각 */
+    suspend fun getWeather(city: String, date: String, now: LocalDateTime = LocalDateTime.now()): String {
         if (date == "미정" || !date.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
             return "모임 날짜가 확정되지 않아 날씨를 가져올 수 없습니다"
         }
@@ -166,16 +197,11 @@ object WeatherService {
         val targetDate = try { LocalDate.parse(date) } catch (e: Exception) {
             return "날짜 형식 오류: $date"
         }
-        val dayDiff = ChronoUnit.DAYS.between(LocalDate.now(), targetDate).toInt()
-
-        when {
-            dayDiff < 0  -> return "이미 지난 날짜입니다"
-            dayDiff < 3  -> return "$date 날씨: 중기예보는 3일 이후부터 제공됩니다"
-            dayDiff > 10 -> return "$date 는 중기예보 범위(최대 10일)를 초과합니다"
-        }
+        rangeNotice(targetDate, now)?.let { return it }
+        val dayDiff = forecastDay(targetDate, now)
 
         val region = regionOf(city) ?: return unsupportedMessage(city)
-        val tmFc = getTmFc()
+        val tmFc = tmFcOf(now)
 
         // ── 육상 중기예보 (날씨상태, 강수확률) ──────────────────────────────
         val land = try {

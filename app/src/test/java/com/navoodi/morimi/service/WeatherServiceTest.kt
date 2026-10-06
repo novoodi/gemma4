@@ -9,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * WeatherService 결함 4건 — 네트워크(CloudProxy) 없이 순수 함수만 검증한다.
@@ -280,5 +281,145 @@ class WeatherServiceTest {
         val item = WeatherService.firstItem(envelope(""""wf5Am":"맑음""""))
         assertNotNull(item)
         assertEquals("맑음", item!!.getString("wf5Am"))
+    }
+
+    // ── 5) 중기예보 하한 4일 ──────────────────────────────────
+
+    /** 10월 6일 [hour]시 [minute]분 */
+    private fun at(hour: Int, minute: Int = 0): LocalDateTime = LocalDateTime.of(2026, 10, 6, hour, minute)
+    private val today: LocalDate = LocalDate.of(2026, 10, 6)
+    private fun plus(days: Long): LocalDate = today.plusDays(days)
+
+    private val tooEarly = "중기예보는 4일 이후부터 제공됩니다"
+    private val tooFar = "중기예보 범위(최대 10일)를 초과합니다"
+
+    @Test
+    fun `하한 정상 - 낮 시각에는 4일 뒤부터 10일 뒤까지 조회 가능`() {
+        (4L..10L).forEach { assertNull("+$it", WeatherService.rangeNotice(plus(it), at(12))) }
+    }
+
+    @Test
+    fun `하한 비정상 - 0~3일 뒤는 4일 이후 안내`() {
+        (0L..3L).forEach {
+            val notice = WeatherService.rangeNotice(plus(it), at(12))
+            assertNotNull("+$it", notice)
+            assertTrue("+$it → $notice", notice!!.contains(tooEarly))
+            assertTrue(notice, notice.contains(plus(it).toString()))
+        }
+    }
+
+    @Test
+    fun `하한 경계 - 3일 뒤는 안내, 4일 뒤는 조회`() {
+        assertTrue(WeatherService.rangeNotice(plus(3), at(6))!!.contains(tooEarly))
+        assertNull(WeatherService.rangeNotice(plus(4), at(6)))
+        assertEquals(4, WeatherService.forecastDay(plus(4), at(6)))
+    }
+
+    @Test
+    fun `하한 경계 - 10일 뒤는 조회, 11일 뒤는 범위 초과`() {
+        assertNull(WeatherService.rangeNotice(plus(10), at(12)))
+        assertTrue(WeatherService.rangeNotice(plus(11), at(12))!!.contains(tooFar))
+        assertTrue(WeatherService.rangeNotice(plus(365), at(12))!!.contains(tooFar))
+    }
+
+    @Test
+    fun `하한 비정상 - 지난 날짜는 시각과 무관하게 지난 날짜 안내`() {
+        listOf(at(0), at(5, 59), at(6), at(12), at(23, 59)).forEach { now ->
+            assertEquals("$now", "이미 지난 날짜입니다", WeatherService.rangeNotice(plus(-1), now))
+            assertEquals("$now", "이미 지난 날짜입니다", WeatherService.rangeNotice(plus(-30), now))
+        }
+    }
+
+    @Test
+    fun `하한 - getWeather가 3일 뒤를 조회하지 않고 4일 이후로 안내한다`() {
+        val r = runBlocking { WeatherService.getWeather("서울", plus(3).toString(), at(12)) }
+        assertEquals("2026-10-09 날씨: $tooEarly", r)
+        assertFalse(r, r.contains("3일 이후"))
+        // 4일 뒤는 날짜 검사를 통과해 지역 검사까지 간다 (모르는 지역이라 네트워크 전에 끝남)
+        val ok = runBlocking { WeatherService.getWeather("뉴욕", plus(4).toString(), at(12)) }
+        assertTrue(ok, ok.contains("해당 지역 예보 미지원"))
+    }
+
+    // ── 6) 0~5시 발표본 날짜 어긋남 ────────────────────────────
+
+    @Test
+    fun `발표시각 경계 - 0시와 5시 59분은 전날 18시, 6시부터 당일 06시, 18시부터 당일 18시`() {
+        assertEquals("202610051800", WeatherService.tmFcOf(at(0)))
+        assertEquals("202610051800", WeatherService.tmFcOf(at(5, 59)))
+        assertEquals("202610060600", WeatherService.tmFcOf(at(6)))
+        assertEquals("202610060600", WeatherService.tmFcOf(at(17, 59)))
+        assertEquals("202610061800", WeatherService.tmFcOf(at(18)))
+        assertEquals("202610061800", WeatherService.tmFcOf(at(23, 59)))
+    }
+
+    @Test
+    fun `발표시각 경계 - 월초와 연초 새벽은 전달 전해 말일 발표본`() {
+        assertEquals("202609301800", WeatherService.tmFcOf(LocalDateTime.of(2026, 10, 1, 3, 0)))
+        assertEquals("202512311800", WeatherService.tmFcOf(LocalDateTime.of(2026, 1, 1, 0, 0)))
+        assertEquals("202802291800", WeatherService.tmFcOf(LocalDateTime.of(2028, 3, 1, 5, 59)))
+    }
+
+    @Test
+    fun `필드 번호 - 새벽에는 전날 발표일 기준이라 오늘 기준보다 1 크다`() {
+        // 10/6 새벽 → 10/5 18시 발표본. 10/11(오늘+5)은 발표일+6
+        assertEquals(6, WeatherService.forecastDay(plus(5), at(0)))
+        assertEquals(6, WeatherService.forecastDay(plus(5), at(5, 59)))
+        assertEquals(5, WeatherService.forecastDay(plus(5), at(6)))
+        assertEquals(5, WeatherService.forecastDay(plus(5), at(17, 59)))
+        assertEquals(5, WeatherService.forecastDay(plus(5), at(18)))
+    }
+
+    @Test
+    fun `필드 번호 - 필드 번호와 발표일을 더하면 항상 목표 날짜`() {
+        listOf(at(0), at(5, 59), at(6), at(17, 59), at(18), at(23, 59)).forEach { now ->
+            (4L..10L).forEach { d ->
+                val n = WeatherService.forecastDay(plus(d), now)
+                assertEquals("$now +$d", plus(d), WeatherService.issuedAt(now).toLocalDate().plusDays(n.toLong()))
+            }
+        }
+    }
+
+    @Test
+    fun `새벽 범위 - 오늘+10일은 전날 발표본에 없어 범위 초과`() {
+        assertTrue(WeatherService.rangeNotice(plus(10), at(0))!!.contains(tooFar))
+        assertTrue(WeatherService.rangeNotice(plus(10), at(5, 59))!!.contains(tooFar))
+        assertNull(WeatherService.rangeNotice(plus(10), at(6)))
+        assertNull(WeatherService.rangeNotice(plus(9), at(5, 59)))
+        assertEquals(10, WeatherService.forecastDay(plus(9), at(5, 59)))
+    }
+
+    @Test
+    fun `새벽 범위 - 오늘+3일은 전날 발표본의 4일차라 조회 가능`() {
+        assertNull(WeatherService.rangeNotice(plus(3), at(0)))
+        assertEquals(4, WeatherService.forecastDay(plus(3), at(5, 59)))
+        assertTrue(WeatherService.rangeNotice(plus(2), at(5, 59))!!.contains(tooEarly))
+        // 6시가 되면 같은 날짜가 다시 하한 밖
+        assertTrue(WeatherService.rangeNotice(plus(3), at(6))!!.contains(tooEarly))
+    }
+
+    @Test
+    fun `새벽 범위 - 오늘 날짜는 지난 날짜가 아니라 4일 이후 안내`() {
+        listOf(at(0), at(5, 59), at(6), at(18)).forEach { now ->
+            assertTrue("$now", WeatherService.rangeNotice(today, now)!!.contains(tooEarly))
+        }
+    }
+
+    @Test
+    fun `새벽 - getWeather가 주입한 시각으로 범위를 판정한다`() {
+        val far = runBlocking { WeatherService.getWeather("서울", plus(10).toString(), at(3)) }
+        assertEquals("2026-10-16 는 $tooFar", far)
+        val ok = runBlocking { WeatherService.getWeather("뉴욕", plus(3).toString(), at(3)) }
+        assertTrue(ok, ok.contains("해당 지역 예보 미지원"))
+        val early = runBlocking { WeatherService.getWeather("뉴욕", plus(3).toString(), at(6)) }
+        assertTrue(early, early.contains(tooEarly))
+    }
+
+    @Test
+    fun `새벽 - 어긋난 필드를 읽지 않는다`() {
+        // 10/5 18시 발표본: wf6 = 10/11, wf5 = 10/10. 새벽에 10/11을 물으면 wf6을 읽어야 한다
+        val land = """"wf5Am":"흐리고 비","wf5Pm":"흐리고 비","rnSt5Am":90,"rnSt5Pm":90,""" +
+            """"wf6Am":"맑음","wf6Pm":"맑음","rnSt6Am":0,"rnSt6Pm":10"""
+        val day = WeatherService.forecastDay(plus(5), at(3))
+        assertEquals("맑음 | 최저 12도 / 최고 21도 | 강수확률 오전 0% / 오후 10%", format(land, day))
     }
 }
