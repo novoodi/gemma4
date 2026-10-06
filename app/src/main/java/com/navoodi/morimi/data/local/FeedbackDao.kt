@@ -18,9 +18,24 @@ interface FeedbackDao {
     @Query("UPDATE feedback SET embedding = :embedding WHERE id = :id")
     suspend fun updateEmbedding(id: Long, embedding: ByteArray?)
 
+    /** 만족도 평점(1~5). 0은 미평가를 뜻하므로 추이 통계에서 제외된다. */
+    @Query("UPDATE feedback SET rating = :rating WHERE id = :id")
+    suspend fun updateRating(id: Long, rating: Int)
+
+    /** 평가된 후기만 — 만족도 추이·재학습 증거의 원천 */
+    @Query("SELECT * FROM feedback WHERE rating > 0 ORDER BY id ASC")
+    suspend fun getRated(): List<FeedbackEntity>
+
     /** 특정 방의 후기 — 시맨틱/키워드 검색 대상(roomId 필터가 검색의 1차 관문) */
     @Query("SELECT * FROM feedback WHERE roomId = :roomId ORDER BY id DESC")
     suspend fun getByRoom(roomId: String): List<FeedbackEntity>
+
+    /** 이 방의 가장 최근 후기 작성 시각. 후기가 없으면 null (C7 팝업 조건) */
+    @Query("SELECT MAX(createdAt) FROM feedback WHERE roomId = :roomId")
+    suspend fun latestFeedbackTimestamp(roomId: String): Long?
+
+    @Query("SELECT COUNT(*) FROM feedback WHERE roomId = :roomId")
+    suspend fun countByRoom(roomId: String): Int
 
     @Query("SELECT * FROM feedback ORDER BY id DESC")
     suspend fun getAll(): List<FeedbackEntity>

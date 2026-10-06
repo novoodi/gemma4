@@ -123,4 +123,48 @@ class ReflectionServiceTest {
         )
         assertTrue(r.passed)
     }
+
+    /**
+     * **회피 표현을 위반으로 읽던 오탐** — 팀원의 2026-09-13 실기기 평가에서 실제로 걸렸다.
+     *
+     * > syn-13에서 "술집 대신 따뜻한 차를 마시며"라는 활동 설명이 불호 '술집'으로
+     * > 3회 연속 위반 판정되어 재시도 소진 후 폴백 성공. (`docs/eval/RESULTS.md`)
+     *
+     * 모델이 **제약을 지켰다고 말하는 문장**이 제약 위반으로 잡혀서 재시도를 3번 태웠다.
+     * 한 번의 재시도가 Gemini 왕복 20초 안팎이다.
+     */
+    @Test
+    fun `회피 표현은 위반이 아니다`() {
+        val prefs = listOf("싫어요: 술집")
+
+        val avoided = ReflectionService.reflect(
+            places = emptyList(),
+            activities = listOf("술집 대신 따뜻한 차를 마시며 이야기하기"),
+            preferences = prefs,
+        )
+        assertTrue("회피 표현을 위반으로 읽었다: ${avoided.violations}", avoided.passed)
+
+        // 다른 회피 어휘들도 같다
+        listOf(
+            "술집 말고 조용한 찻집에서",
+            "술집은 빼고 카페 위주로",
+            "술집이 아닌 브런치 가게",
+        ).forEach { activity ->
+            val r = ReflectionService.reflect(emptyList(), listOf(activity), prefs)
+            assertTrue("회피 표현을 위반으로 읽었다: [$activity] ${r.violations}", r.passed)
+        }
+    }
+
+    /** 회피 처리가 **진짜 위반까지** 놓치면 안 된다 — 게이트가 무력해진다. */
+    @Test
+    fun `진짜 위반은 여전히 잡는다`() {
+        val prefs = listOf("싫어요: 술집")
+        listOf(
+            "술집에서 한잔하기",
+            "근처 술집 투어",
+        ).forEach { activity ->
+            val r = ReflectionService.reflect(emptyList(), listOf(activity), prefs)
+            assertFalse("진짜 위반을 놓쳤다: [$activity]", r.passed)
+        }
+    }
 }

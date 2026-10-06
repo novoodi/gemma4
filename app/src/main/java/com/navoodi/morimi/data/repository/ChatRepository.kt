@@ -131,7 +131,8 @@ object ChatRepository {
                             senderId = doc.getString("senderId") ?: return@mapNotNull null,
                             senderName = doc.getString("senderName") ?: "",
                             content = doc.getString("content") ?: "",
-                            timestamp = doc.millisField("timestamp")
+                            timestamp = doc.millisField("timestamp"),
+                            pending = doc.metadata.hasPendingWrites(),
                         )
                     }.getOrNull()
                 } ?: emptyList()

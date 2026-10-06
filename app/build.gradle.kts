@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +10,17 @@ plugins {
 
 // 외부 API 키(Gemini·카카오·기상청)는 APK에 넣지 않는다 — Firebase Functions 시크릿에만 존재하고
 // 앱은 service/CloudProxy 를 통해 서버 프록시를 호출한다 (DEVLOG 2026-09-05 참조).
+//
+// 예외: 카카오맵 JavaScript 키(추천 결과 지도 표시용). 이 키는 브라우저에 노출되도록 설계된
+// 클라이언트 키로, 카카오 콘솔에 등록한 웹 도메인에서만 동작한다(REST 키와 달리 비밀이 아니다).
+// 그래도 저장소에는 넣지 않는다 — local.properties(git 제외)에서만 읽고, 없으면 빈 값으로 빌드돼
+// 앱은 "지도를 불러올 수 없음 + 주소/카카오맵 링크"로 대체 표시한다 (docs/KAKAO_MAP_KEY.md).
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun localProp(key: String, default: String = ""): String =
+    (localProps.getProperty(key) ?: default).trim().replace("\\", "\\\\").replace("\"", "\\\"")
 
 android {
     namespace = "com.navoodi.morimi"
@@ -23,6 +36,11 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // 카카오맵 JavaScript 키 — local.properties의 kakao.map.js.key (없으면 빈 값 → 지도 대체 표시)
+        buildConfigField("String", "KAKAO_MAP_JS_KEY", "\"${localProp("kakao.map.js.key")}\"")
+        // 지도 HTML의 출처(origin). 카카오 콘솔 [플랫폼 > Web 사이트 도메인]에 같은 값을 등록해야 한다
+        buildConfigField("String", "KAKAO_MAP_ORIGIN", "\"${localProp("kakao.map.origin", "http://localhost")}\"")
     }
 
     buildTypes {
@@ -50,6 +68,8 @@ android {
         unitTests {
             // android.util.Log 등 스텁 호출이 예외 대신 기본값을 반환하도록 (JVM 단위 테스트)
             isReturnDefaultValues = true
+            // Robolectric(마이그레이션 런타임 검증)이 리소스·매니페스트를 읽어야 한다
+            isIncludeAndroidResources = true
         }
     }
     packaging {
@@ -130,9 +150,15 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.junit)
+    // ── 고도화 이식: 마이그레이션 런타임 검증 + UI/통합 계측 테스트 ──────────
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.test:core:1.7.0")
+    testImplementation(libs.androidx.room.testing)
     // JVM 단위 테스트에서 org.json.JSONObject 실제 구현 사용 (android.jar 스텁은 예외 발생)
     testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)

@@ -37,6 +37,7 @@ fun MyPageScreen(
     activeTab: TpTab,
     onLogout: () -> Unit,
     onModelDownload: () -> Unit = {},
+    onMetrics: () -> Unit = {},
 ) {
     var pushOn by remember { mutableStateOf(true) }
     var marketingOn by remember { mutableStateOf(false) }
@@ -168,6 +169,15 @@ fun MyPageScreen(
                         }
                     }
                 }
+            }
+
+            SectionLabel("추천 품질")
+            SettingsGroup {
+                SettingsRowChevron(
+                    label = "추천 품질 리포트",
+                    value = "만족도·정확도 추이",
+                    onClick = onMetrics,
+                )
             }
 
             SectionLabel("정보")

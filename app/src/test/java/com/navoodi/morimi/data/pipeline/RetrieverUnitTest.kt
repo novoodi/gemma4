@@ -51,9 +51,14 @@ class RetrieverUnitTest {
     private fun fakeDao(vararg items: FeedbackEntity) = object : FeedbackDao {
         override suspend fun insert(entity: FeedbackEntity) = 0L
         override suspend fun updateEmbedding(id: Long, embedding: ByteArray?) {}
+        override suspend fun updateRating(id: Long, rating: Int) {}
+        override suspend fun getRated() = items.filter { it.rating > 0 }
         override suspend fun getByRoom(roomId: String) = items.filter { it.roomId == roomId }
         override suspend fun getAll() = items.toList()
         override suspend fun getMissingEmbeddings() = items.filter { it.embedding == null }
+        override suspend fun latestFeedbackTimestamp(roomId: String) =
+            items.filter { it.roomId == roomId }.maxOfOrNull { it.createdAt }
+        override suspend fun countByRoom(roomId: String) = items.count { it.roomId == roomId }
         override suspend fun deleteByRoom(roomId: String) {}
         override suspend fun clear() {}
     }
