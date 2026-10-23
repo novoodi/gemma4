@@ -81,6 +81,24 @@ class StatusCompressionPipelineTest {
         assertEquals(listOf("민수", "지영"), merged.participants)
     }
 
+    @Test
+    fun `접두사만 있고 내용이 없는 선호 항목은 병합에서 제거한다`() {
+        // RESULTS.md 2026-09-13: constrained decoding이 접두사 스키마는 강제하지만
+        // 내용까지 강제하지 못해 "좋아요:" 단독 항목이 남았다. 이미 저장된 빈 항목도 정리한다.
+        val merged = pipeline.mergeStatus(
+            existing = UserStatusEntity("room1", preferences = listOf("좋아요:", "좋아요: 카페")),
+            fresh = UserStatusEntity("room1", preferences = listOf("싫어요: ", "싫어요: 술집")),
+        )
+        assertEquals(listOf("좋아요: 카페", "싫어요: 술집"), merged.preferences)
+    }
+
+    @Test
+    fun `직전 상태가 없을 때도 빈 선호 항목을 제거한다`() {
+        val fresh = UserStatusEntity("room1", preferences = listOf("좋아요:", "싫어요: 술집"))
+        val merged = pipeline.mergeStatus(existing = null, fresh = fresh)
+        assertEquals(listOf("싫어요: 술집"), merged.preferences)
+    }
+
     // ── JSON 추출 (extractAndParse) ───────────────────────────────────────────
 
     @Test

@@ -30,7 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.navoodi.morimi.data.repository.ChatRepository
 import com.navoodi.morimi.navigation.Screen
-import com.navoodi.morimi.ui.screen.chat.AgentDebugEntry
+import com.navoodi.morimi.ui.screen.chat.AssistantDebugEntry
 import com.navoodi.morimi.ui.components.GeminiIcon
 import com.navoodi.morimi.ui.theme.*
 import kotlinx.coroutines.delay
@@ -62,7 +62,7 @@ class AILoadingViewModel(savedStateHandle: SavedStateHandle) : ViewModel() {
 fun AILoadingScreen(
     navController: NavController,
     agentProgress: String,
-    debugLog: List<AgentDebugEntry> = emptyList(),
+    debugLog: List<AssistantDebugEntry> = emptyList(),
     viewModel: AILoadingViewModel = viewModel()
 ) {
     val done by viewModel.done.collectAsState()
@@ -144,7 +144,7 @@ fun AILoadingScreen(
 }
 
 @Composable
-private fun DebugEntryCard(entry: AgentDebugEntry) {
+private fun DebugEntryCard(entry: AssistantDebugEntry) {
     var expanded by remember { mutableStateOf(false) }
     Surface(
         shape = RoundedCornerShape(8.dp),

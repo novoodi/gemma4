@@ -64,3 +64,8 @@
 #   (1) 콘솔 측 키 제한(패키지명 + SHA-1, API별 스코프) 및
 #   (2) Gemini 호출의 서버(Cloud Function) 프록시 이전
 # 으로만 가능하다. → 후속 과제.
+
+# 추천 결과 지도(WebView) — JS 브리지 메서드가 난독화·제거되면 지도 준비/실패 신호가 끊긴다
+-keepclassmembers class com.navoodi.morimi.ui.screen.aireport.PlaceMapBridge {
+    @android.webkit.JavascriptInterface <methods>;
+}

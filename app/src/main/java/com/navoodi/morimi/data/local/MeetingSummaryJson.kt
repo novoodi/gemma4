@@ -1,5 +1,6 @@
 package com.navoodi.morimi.data.local
 
+import com.navoodi.morimi.data.model.GeoPoint
 import com.navoodi.morimi.data.model.MeetingSummary
 import com.navoodi.morimi.data.model.RecommendedPlace
 import com.navoodi.morimi.data.model.VerificationStatus
@@ -10,7 +11,7 @@ import org.json.JSONObject
  * MeetingSummary ↔ JSON 직렬화 (Room 영속용, 순수 Kotlin — JVM 단위 테스트 가능).
  *
  * 쓰는 쪽은 우리 코드지만 읽는 쪽은 앱 버전 간 스키마 변화를 견뎌야 하므로
- * 방어적으로 파싱한다: 없는 필드는 기본값, 모르는 enum은 UNVERIFIED,
+ * 방어적으로 파싱한다: 없는 필드는 기본값, 모르는 enum은 UNVERIFIED, 좌표가 없거나 깨지면 null,
  * 전체 파싱 실패는 크래시가 아니라 null(호출측에서 로그 후 스킵).
  */
 object MeetingSummaryJson {
@@ -31,6 +32,11 @@ object MeetingSummaryJson {
                     put("reason", p.reason)
                     put("placeUrl", p.placeUrl)
                     put("verification", p.verification.name)
+                    // 좌표는 있을 때만 쓴다 — 좌표 없는 결과는 이전 버전과 같은 JSON이 된다
+                    p.geoPoint?.let {
+                        put("latitude", it.latitude)
+                        put("longitude", it.longitude)
+                    }
                 })
             }
         })
@@ -62,6 +68,8 @@ object MeetingSummaryJson {
             val p = optJSONObject(i) ?: return@mapNotNull null
             val name = p.optString("name")
             if (name.isBlank()) return@mapNotNull null
+            // 좌표 필드가 없는 구버전 데이터·깨진 값은 null (optDouble은 없으면 NaN → GeoPoint가 거름)
+            val point = GeoPoint.of(p.optDouble("latitude"), p.optDouble("longitude"))
             RecommendedPlace(
                 name = name,
                 address = p.optString("address"),
@@ -69,6 +77,8 @@ object MeetingSummaryJson {
                 placeUrl = p.optString("placeUrl"),
                 verification = runCatching { VerificationStatus.valueOf(p.optString("verification")) }
                     .getOrDefault(VerificationStatus.UNVERIFIED),
+                latitude = point?.latitude,
+                longitude = point?.longitude,
             )
         }
     }

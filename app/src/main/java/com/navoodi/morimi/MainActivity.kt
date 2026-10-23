@@ -37,6 +37,7 @@ import com.navoodi.morimi.ui.screen.profile.MyPageScreen
 import com.navoodi.morimi.ui.screen.profile.ProfileEditScreen
 import com.navoodi.morimi.ui.screen.splash.SplashScreen
 import com.navoodi.morimi.ui.screen.joinroom.JoinRoomScreen
+import com.navoodi.morimi.ui.screen.metrics.MetricsScreen
 import com.navoodi.morimi.ui.screen.modeldownload.ModelDownloadScreen
 import com.navoodi.morimi.ui.screen.summary.SummaryScreen
 import com.navoodi.morimi.ui.screen.vote.VotingScreen
@@ -239,6 +240,9 @@ class MainActivity : ComponentActivity() {
                             onModelDownload = {
                                 navController.navigate(Screen.ModelDownload.route)
                             },
+                            onMetrics = {
+                                navController.navigate(Screen.Metrics.route)
+                            },
                         )
                     }
                     composable(Screen.ProfileEdit.route) {
@@ -254,6 +258,10 @@ class MainActivity : ComponentActivity() {
 
                     composable(Screen.ModelDownload.route) {
                         ModelDownloadScreen(navController = navController)
+                    }
+
+                    composable(Screen.Metrics.route) {
+                        MetricsScreen(navController = navController)
                     }
 
                     // Chat flow

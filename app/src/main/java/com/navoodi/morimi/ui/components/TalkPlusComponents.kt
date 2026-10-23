@@ -55,8 +55,8 @@ fun TalkPlusTabBar(active: TpTab, onTab: (TpTab) -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(58.dp)
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .height(64.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TAB_SPECS.forEach { spec ->
@@ -94,13 +94,13 @@ private fun TabItem(
             imageVector = if (selected) spec.filled else spec.outlined,
             contentDescription = spec.label,
             tint = tint,
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(28.dp),
         )
         Spacer(Modifier.height(3.dp))
         Text(
             text = spec.label,
             color = tint,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         )
     }

@@ -27,9 +27,13 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
                      │
               ── 디바이스 경계 ──
                      │
-              AgentOrchestrator → Gemini (Function Calling: getWeather / searchPlace)
+              AssistantOrchestrator
+                     → ContextClassifier(모임 상황 판정) → PromptSieve(정형 요청 블록)
+                     → Gemini (Function Calling: getWeather / searchPlace)
                      → GuardrailService 팩트체크 (OPEN/CLOSED/UNKNOWN 3-상태)
                      → 실패 시 피드백 누적 재시도 (최대 3회, 툴 왕복 상한 8회)
+                     → AhpEngine/PlaceRanker(상황별 기준 가중치로 후보 랭킹)
+                     → HarnessMetrics 기록 → 후기 별점 → AhpJudgmentLearner 재학습
 ```
 
 ### 핵심 컴포넌트
@@ -38,7 +42,13 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
 |---|---|
 | `service/LlmService` | LiteRT-LM Engine 래퍼. Gemma 4 E2B (.litertlm, GPU 백엔드) |
 | `service/PiiScrubber` | 클라우드 전송 직전 결정론적 PII 마스킹 (순수 Kotlin, 명단 대조+정규식+호칭) |
-| `service/AgentOrchestrator` | 하이브리드 하네스 통제실. Gemini FC + Guardrail 재시도 루프 |
+| `service/AssistantOrchestrator` | 하이브리드 하네스 통제실. Gemini FC + Guardrail 재시도 루프 + AHP 랭킹 |
+| `service/ContextClassifier` | 모임 상황(축하·위로·식사 등) 온디바이스 분류. 미분류는 `GENERIC` |
+| `service/PromptSieve` | 거름망 — 자유 대화를 고정 슬롯 요청 블록으로 정형화 (상대 날짜 → 절대 날짜) |
+| `service/AhpEngine` / `PlaceRanker` | 상황별 AHP 기준 가중치(CR 게이트) · 후보 종합 점수 랭킹 |
+| `service/AhpJudgmentLearner` | 후기 만족도로 쌍대비교 판단을 한 칸씩 보정 (가중치 직접 수정 금지) |
+| `service/HarnessMetrics` | 실존 확인율·할루시네이션율·확인률·제약 준수율 (개수로 저장, 비율은 읽을 때 계산) |
+| `data/repository/MetricsRepository` | 하네스 실행 기록 + 학습된 AHP 판단 영속 (기기 밖으로 안 나감) |
 | `service/GuardrailService` | 추천 장소 영업 여부 팩트체크. fail-open 금지 — 검증 불가는 UNKNOWN |
 | `service/CloudProxy` | 외부 API 프록시 게이트. Gemini·카카오·기상청 키는 APK에 없고 Functions 시크릿에만 존재 — 앱은 callable(`functions/index.js`)만 호출 |
 | `service/GeminiWire` | Gemini generateContent REST JSON 조립·해석 (순수 Kotlin, SDK 없음). `GeminiGateway` 포트로 오케스트레이터와 분리 |
@@ -68,7 +78,7 @@ Gemini API가 성향 프로필과 과거 피드백을 반영해 장소·활동�
 4. **프롬프트 규칙**: 온디바이스 Gemma 프롬프트는 한국어, 출력 포맷을 명시적으로 강제,
    "별표·샵·대괄호 없이 일반 텍스트" 지시 포함 (`NO_MARKDOWN` 상수 참조).
 
-5. **관찰 가능성**: 에이전트 흐름의 주요 단계는 `AgentEvent`로 발행한다.
+5. **관찰 가능성**: 에이전트 흐름의 주요 단계는 `AssistantEvent`로 발행한다.
    새 파이프라인 단계 추가 시 대응하는 이벤트도 추가 (기존 이벤트 확장 시
    기본값 파라미터로 비파괴 확장 — `GemmaSummaryCompleted.redactions` 전례).
 

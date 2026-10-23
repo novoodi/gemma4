@@ -80,7 +80,7 @@ class OnDeviceEvalRunner {
                         content = m.getString("text"))
                 }
             }
-            // AgentOrchestrator.buildKnownNames 와 동일 규칙(userStatus 없음): 발신자명
+            // AssistantOrchestrator.buildKnownNames 와 동일 규칙(userStatus 없음): 발신자명
             val knownNames = msgs.map { it.senderName.trim() }.filter { it.isNotEmpty() }.distinct()
 
             for (rep in 1..reps) {

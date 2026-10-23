@@ -1,0 +1,47 @@
+{
+  "_about": "합성 대화(synthetic.json)에 대한 상황(MeetingContext) 정답 라벨.",
+  "_method": [
+    "이 라벨은 2026-09-23에 ContextClassifier를 **돌리기 전에** gold.purpose 문자열만 보고 붙였다.",
+    "분류기 출력을 본 뒤 라벨을 고치면 채점자가 곧 채점 대상이 되어 검증이 성립하지 않는다.",
+    "합성셋은 원래 요약·압축 평가용으로 만들어진 것이라 상황 분류용 라벨이 없었다.",
+    "따라서 이 라벨은 '독립적인 사람 라벨링'이 아니라 **저자가 gold.purpose에서 유도한 것**이다.",
+    "그 한계를 감안해 ambiguous를 명시하고 채점도 명확분(clear)과 전체를 나눠 보고한다."
+  ],
+  "_ambiguous_policy": "두 상황 중 어느 쪽으로도 읽히는 경우 ambiguous=true로 두고, primary는 purpose 문자열이 직접 말하는 쪽을 택했다. 선호(likes)는 목적이 아니므로 근거로 쓰지 않았다.",
+  "labels": [
+    {
+      "id": "syn-01", "purpose": "오랜만에 이야기 나누는 친목 모임",
+      "primary": "GENERIC", "ambiguous": true, "alt": "CAFE",
+      "note": "목적은 '친목'이고 카페·와인바는 선호 항목이다. 선호를 목적으로 읽으면 CAFE."
+    },
+    { "id": "syn-02", "purpose": "점심 식사", "primary": "MEAL", "ambiguous": false },
+    {
+      "id": "syn-03", "purpose": "회식",
+      "primary": "DRINK", "ambiguous": true, "alt": "MEAL",
+      "note": "한국어 '회식'은 술자리를 함의하는 경우가 많지만 식사만인 경우도 있다."
+    },
+    {
+      "id": "syn-04", "purpose": "보드게임 카페 모임",
+      "primary": "ACTIVITY", "ambiguous": true, "alt": "CAFE",
+      "note": "장소는 카페지만 목적은 보드게임이다."
+    },
+    { "id": "syn-05", "purpose": "점심 식사", "primary": "MEAL", "ambiguous": false },
+    { "id": "syn-06", "purpose": "친목 모임", "primary": "GENERIC", "ambiguous": false },
+    {
+      "id": "syn-07", "purpose": "산책과 카페",
+      "primary": "ACTIVITY", "ambiguous": true, "alt": "CAFE",
+      "note": "두 목적이 병렬로 적혀 있다."
+    },
+    { "id": "syn-08", "purpose": "노래방 모임", "primary": "ACTIVITY", "ambiguous": false },
+    {
+      "id": "syn-09", "purpose": "브런치 모임",
+      "primary": "MEAL", "ambiguous": true, "alt": "CAFE",
+      "note": "브런치는 식사이지만 카페에서 먹는 경우가 많다."
+    },
+    { "id": "syn-10", "purpose": "전시 관람", "primary": "ACTIVITY", "ambiguous": false },
+    { "id": "syn-11", "purpose": "맥주 모임", "primary": "DRINK", "ambiguous": false },
+    { "id": "syn-12", "purpose": "피크닉", "primary": "ACTIVITY", "ambiguous": false },
+    { "id": "syn-13", "purpose": "저녁 식사", "primary": "MEAL", "ambiguous": false },
+    { "id": "syn-14", "purpose": "점심 식사", "primary": "MEAL", "ambiguous": false }
+  ]
+}

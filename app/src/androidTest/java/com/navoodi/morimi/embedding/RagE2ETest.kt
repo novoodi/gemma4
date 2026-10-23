@@ -5,8 +5,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.navoodi.morimi.MoimApp
 import com.navoodi.morimi.data.model.Message
-import com.navoodi.morimi.service.AgentEvent
-import com.navoodi.morimi.service.AgentEventTracker
+import com.navoodi.morimi.service.AssistantEvent
+import com.navoodi.morimi.service.AssistantEventTracker
 import com.navoodi.morimi.service.EmbeddingGemmaEmbedder
 import com.navoodi.morimi.service.OrchestratorResult
 import kotlinx.coroutines.runBlocking
@@ -35,11 +35,12 @@ class RagE2ETest {
     private val app get() = ctx.applicationContext as MoimApp
 
     private fun msgs(vararg c: String) = c.mapIndexed { i, t ->
-        Message(roomId = ROOM, senderId = "u${i % 2}", senderName = if (i % 2 == 0) "철수" else "영희", content = t)
+        Message(roomId = ROOM, senderId = "u${i % 2}", senderName = if (i % 2 == 0) "철수" else "영희", content = t,
+            timestamp = 1_000L + i) // 정본 순서(서버 시각 → 문서 id) 대비 작성 순서를 시각으로 명시
     }
 
-    private fun capture() = mutableListOf<AgentEvent>().let { list ->
-        list to object : AgentEventTracker { override fun onEvent(event: AgentEvent) { list += event } }
+    private fun capture() = mutableListOf<AssistantEvent>().let { list ->
+        list to object : AssistantEventTracker { override fun onEvent(event: AssistantEvent) { list += event } }
     }
 
     @Test
@@ -85,7 +86,7 @@ class RagE2ETest {
             userStatus = null,
             eventTracker = tracker,
         )
-        val prompt = events.filterIsInstance<AgentEvent.PromptGenerated>().first().prompt
+        val prompt = events.filterIsInstance<AssistantEvent.PromptGenerated>().first().prompt
         Log.i(TAG, "프롬프트 주입 — 카페후기=${prompt.contains("조용한 카페")}")
         assertTrue("회수된 카페 후기가 Gemini 프롬프트에 주입돼야", prompt.contains("조용한 카페"))
         when (result) {
@@ -110,7 +111,7 @@ class RagE2ETest {
 
             val (events2, tracker2) = capture()
             app.agentOrchestrator.orchestrate(ROOM, msgs("조용한 카페에서 만나자", "카페 추천"), null, eventTracker = tracker2)
-            val prompt2 = events2.filterIsInstance<AgentEvent.PromptGenerated>().first().prompt
+            val prompt2 = events2.filterIsInstance<AssistantEvent.PromptGenerated>().first().prompt
             Log.i(TAG, "폴백 프롬프트 카페후기 주입=${prompt2.contains("카페")}")
             assertTrue("폴백 경로도 프롬프트에 후기 주입", prompt2.contains("카페"))
         } finally {

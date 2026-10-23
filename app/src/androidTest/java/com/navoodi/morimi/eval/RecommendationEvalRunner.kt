@@ -14,9 +14,9 @@ import com.navoodi.morimi.data.pipeline.FeedbackRetriever
 import com.navoodi.morimi.data.pipeline.GemmaOnDeviceLlm
 import com.navoodi.morimi.data.pipeline.KeywordFallbackRetriever
 import com.navoodi.morimi.data.repository.FeedbackEntry
-import com.navoodi.morimi.service.AgentEvent
-import com.navoodi.morimi.service.AgentEventTracker
-import com.navoodi.morimi.service.AgentOrchestrator
+import com.navoodi.morimi.service.AssistantEvent
+import com.navoodi.morimi.service.AssistantEventTracker
+import com.navoodi.morimi.service.AssistantOrchestrator
 import com.navoodi.morimi.service.EmbeddingGemmaEmbedder
 import com.navoodi.morimi.service.GuardrailService
 import com.navoodi.morimi.service.OrchestratorResult
@@ -35,7 +35,7 @@ import java.util.Locale
 
 /**
  * [평가 실행기] 추천 파이프라인 전체(Gemma 요약 → 스크러버 → 후기 회수 → Gemini FC → Guardrail·Reflection 재시도)를
- * 시나리오 × 후기 조건(none/keyword/semantic)으로 돌리고 **모든 AgentEvent** 를 JSONL로 남긴다. 판정 없음.
+ * 시나리오 × 후기 조건(none/keyword/semantic)으로 돌리고 **모든 AssistantEvent** 를 JSONL로 남긴다. 판정 없음.
  *
  * 검증 유무 비교(Reflection·Guardrail)는 코드 변경 없이 "1회차 결과 vs 최종 결과"로 채점한다
  * (1회차 프롬프트 = 검증 피드백 없는 기본 프롬프트). 채점: scripts/eval/score_recommend.py
@@ -61,6 +61,15 @@ class RecommendationEvalRunner {
         override suspend fun getAll() = items.toList()
         override suspend fun getMissingEmbeddings() = items.filter { it.embedding == null }
         override suspend fun deleteByRoom(roomId: String) {}
+        // 고도화 이식(2026-09-23): 평점·후기 팝업 정책이 DAO에 추가돼 가짜 구현도 맞춘다
+        override suspend fun updateRating(id: Long, rating: Int) {
+            val i = items.indexOfFirst { it.id == id }
+            if (i >= 0) items[i] = items[i].copy(rating = rating)
+        }
+        override suspend fun getRated() = items.filter { it.rating > 0 }
+        override suspend fun latestFeedbackTimestamp(roomId: String) =
+            items.filter { it.roomId == roomId }.maxOfOrNull { it.createdAt }
+        override suspend fun countByRoom(roomId: String) = items.count { it.roomId == roomId }
         override suspend fun clear() { items.clear() }
     }
 
@@ -68,16 +77,18 @@ class RecommendationEvalRunner {
         override suspend fun retrieve(query: String, topK: Int): List<FeedbackEntry> = emptyList()
     }
 
-    private fun AgentEvent.toJson(): JSONObject = JSONObject().put("event", this::class.java.simpleName).also { o ->
+    private fun AssistantEvent.toJson(): JSONObject = JSONObject().put("event", this::class.java.simpleName).also { o ->
         when (this) {
-            is AgentEvent.OrchestrationStarted -> o.put("messageCount", messageCount)
-            is AgentEvent.GemmaSummaryCompleted -> o.put("summary", summary).put("redactions", redactions).put("byCategory", JSONObject(redactionsByCategory))
-            is AgentEvent.PromptGenerated -> o.put("attempt", attempt).put("hasRag", prompt.contains("[과거 피드백 이력]")).put("promptChars", prompt.length)
-            is AgentEvent.ToolCalled -> o.put("name", name).put("args", JSONObject(args.mapValues { it.value?.toString() })).put("resultChars", result.length).put("resultHead", result.take(120))
-            is AgentEvent.JsonParsed -> o.put("rawJson", rawJson)
-            is AgentEvent.GuardrailEvaluated -> o.put("attempt", attempt).put("passed", passed).put("feedback", feedback).put("unknownCount", unknownCount)
-            is AgentEvent.ReflectionEvaluated -> o.put("attempt", attempt).put("passed", passed).put("violations", JSONArray(violations))
-            is AgentEvent.OrchestrationFinished -> o.put("success", success).put("attempts", attempts).put("reason", reason ?: JSONObject.NULL)
+            is AssistantEvent.OrchestrationStarted -> o.put("messageCount", messageCount)
+            is AssistantEvent.GemmaSummaryCompleted -> o.put("summary", summary).put("redactions", redactions).put("byCategory", JSONObject(redactionsByCategory))
+            is AssistantEvent.PromptGenerated -> o.put("attempt", attempt).put("hasRag", prompt.contains("[과거 피드백 이력]")).put("promptChars", prompt.length)
+            is AssistantEvent.ToolCalled -> o.put("name", name).put("args", JSONObject(args.mapValues { it.value?.toString() })).put("resultChars", result.length).put("resultHead", result.take(120))
+            is AssistantEvent.JsonParsed -> o.put("rawJson", rawJson)
+            is AssistantEvent.GuardrailEvaluated -> o.put("attempt", attempt).put("passed", passed).put("feedback", feedback).put("unknownCount", unknownCount)
+            is AssistantEvent.ReflectionEvaluated -> o.put("attempt", attempt).put("passed", passed).put("violations", JSONArray(violations))
+            is AssistantEvent.OrchestrationFinished -> o.put("success", success).put("attempts", attempts).put("reason", reason ?: JSONObject.NULL)
+            // 고도화로 추가된 이벤트들 - 이 러너의 관심사가 아니다
+            else -> Unit
         }
     }
 
@@ -126,7 +137,9 @@ class RecommendationEvalRunner {
             val msgs = d.getJSONArray("messages").let { a ->
                 List(a.length()) { k ->
                     val m = a.getJSONObject(k)
-                    Message(roomId = "__eval__$id", senderId = m.getString("pid"), senderName = m.getString("sender"), content = m.getString("text"))
+                    Message(roomId = "__eval__$id", senderId = m.getString("pid"), senderName = m.getString("sender"), content = m.getString("text"),
+                        // 정본 순서(서버 시각 → 문서 id)를 따르므로 대화 순서를 시각으로 명시한다(2026-10 S3)
+                        timestamp = 1_000L + k)
                 }
             }
             val g = d.getJSONObject("gold")
@@ -143,10 +156,10 @@ class RecommendationEvalRunner {
 
             for (cond in conditions) {
                 val retriever = retrievers[cond] ?: run { Log.w(TAG, "조건 $cond 비가용 — 스킵"); null } ?: continue
-                val orchestrator = AgentOrchestrator(GuardrailService(), retriever, llmPort)
+                val orchestrator = AssistantOrchestrator(GuardrailService(), retriever, llmPort)
                 for (rep in 1..reps) {
                     val events = JSONArray()
-                    val tracker = object : AgentEventTracker { override fun onEvent(event: AgentEvent) { events.put(event.toJson()) } }
+                    val tracker = object : AssistantEventTracker { override fun onEvent(event: AssistantEvent) { events.put(event.toJson()) } }
                     val row = JSONObject().put("type", "result").put("id", id).put("condition", cond).put("rep", rep)
                         .put("goldDateAbsolute", g.optString("date_absolute", null) ?: JSONObject.NULL)
                     val t0 = System.nanoTime()

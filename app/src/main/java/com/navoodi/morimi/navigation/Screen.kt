@@ -27,4 +27,5 @@ sealed class Screen(val route: String) {
     }
     data object JoinRoom : Screen("join-room")
     data object ModelDownload : Screen("model-download")
+    data object Metrics : Screen("metrics")
 }
