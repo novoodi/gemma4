@@ -21,9 +21,11 @@ data class RankedPlace(
      *
      * AHP 종합점수는 **실행 가능한 대안들 사이의 비교**로만 의미가 있다 — 존재하지 않는
      * 가게는 다른 기준을 아무리 잘 만족해도 대안이 아니므로, 점수로 겨루게 두지 않고
-     * 먼저 걸러낸다(AHP의 사전 선별 단계). 그래서 정렬 키는 (실행가능, 점수) 순이다.
+     * 먼저 걸러낸다(AHP의 사전 선별 단계). 그래서 정렬 키는 (실행가능, 지역·목적 적합, 점수) 순이다.
      */
     val feasible: Boolean = true,
+    /** 0: 지역 불일치, 1: 판단 보류, 2: 지역과 목적이 모두 일치. */
+    val relevanceTier: Int = 1,
 ) {
     /** "목적 적합 1.00 × 42.7%" 형태의 사람이 읽는 근거 문자열. */
     fun explain(ahp: AhpResult): String = ahp.ranked().joinToString(", ") { (c, w) ->
@@ -87,7 +89,7 @@ object PlaceRanker {
     )
 
     /**
-     * 후보들을 AHP 가중합 점수 내림차순으로 정렬한다.
+     * 후보를 실행 가능 여부, 지역·목적 적합, AHP 가중합 점수 순으로 정렬한다.
      *
      * @param places       Gemini가 낸 추천 장소(Guardrail 검증 상태가 병합된 상태여야 의미가 있다)
      * @param context      분류된 모임 상황
@@ -101,6 +103,7 @@ object PlaceRanker {
         ahp: AhpResult,
         preferences: List<String>,
         pastImpressions: List<PastImpression> = emptyList(),
+        meetingLocation: String = "",
     ): List<RankedPlace> {
         if (places.isEmpty()) return emptyList()
 
@@ -110,8 +113,16 @@ object PlaceRanker {
         return places
             .map { place ->
                 val text = KoTextMatch.placeText(place)
+                // 목적 적합에는 검증된 업종과 장소명만 사용한다. 모델이 쓴 추천 이유로 업종을 증명하지 않는다.
+                val purpose = purposeFit(place.name + " " + place.category, context)
+                val locality = localityFit(place, meetingLocation)
+                val relevanceTier = when {
+                    locality < 0 -> 0
+                    purpose > NEUTRAL && locality > 0 -> 2
+                    else -> 1
+                }
                 val breakdown = mapOf(
-                    AhpCriterion.PURPOSE_FIT to purposeFit(text, context),
+                    AhpCriterion.PURPOSE_FIT to purpose,
                     AhpCriterion.PREFERENCE_FIT to preferenceFit(text, likes),
                     AhpCriterion.CONSTRAINT_SAFETY to constraintSafety(text, dislikes),
                     AhpCriterion.VERIFIED_TRUST to verifiedTrust(place.verification),
@@ -122,11 +133,16 @@ object PlaceRanker {
                     score = AhpEngine.synthesize(breakdown, ahp),
                     breakdown = breakdown,
                     feasible = place.verification != VerificationStatus.NOT_FOUND,
+                    relevanceTier = relevanceTier,
                 )
             }
             // 실행 불가(실존 부정)는 무조건 뒤로 — 가중치 조합으로 되살아나지 못하게 한다.
             // 동점이면 원래 순서를 유지해야 결과가 실행마다 흔들리지 않는다(sortedWith는 안정 정렬)
-            .sortedWith(compareByDescending<RankedPlace> { it.feasible }.thenByDescending { it.score })
+            .sortedWith(
+                compareByDescending<RankedPlace> { it.feasible }
+                    .thenByDescending { it.relevanceTier }
+                    .thenByDescending { it.score }
+            )
     }
 
     /** 실제로 갈 수 있는 후보만 — 존재하지 않는 장소를 제외한 랭킹. */
@@ -134,6 +150,34 @@ object PlaceRanker {
 
     /** 랭킹 결과를 [RecommendedPlace] 목록으로 되돌린다(요약 모델에 반영할 때). */
     fun reorder(ranked: List<RankedPlace>): List<RecommendedPlace> = ranked.map { it.place }
+
+    // ── 지역 적합 — 구체적인 장소가 알려진 경우에만 우선순위를 조정 ───────────────
+    private val BROAD_LOCATIONS = setOf(
+        "서울", "서울시", "서울특별시", "부산", "부산시", "부산광역시",
+        "대구", "대구시", "인천", "인천시", "광주", "광주시", "대전", "대전시",
+        "울산", "울산시", "세종", "세종시", "경기", "경기도", "강원", "강원도",
+        "충북", "충청북도", "충남", "충청남도", "전북", "전라북도", "전남", "전라남도",
+        "경북", "경상북도", "경남", "경상남도", "제주", "제주도",
+    )
+
+    /** 1=근처로 확인, 0=근거 부족, -1=명시된 구와 다른 구. 넓은 도시만 있으면 거리를 추측하지 않는다. */
+    internal fun localityFit(place: RecommendedPlace, meetingLocation: String): Int {
+        val tokens = meetingLocation.split(Regex("""[\s,/·]+"""))
+            .filter { token -> token.isNotBlank() && token !in BROAD_LOCATIONS && token != "미정" }
+        val requested = tokens.lastOrNull { it.endsWith("구") || it.endsWith("동") || it.endsWith("역") }
+            ?: tokens.lastOrNull { token -> token.any(Char::isLetter) }
+            ?: return 0
+        val key = requested.removeSuffix("역").removeSuffix("동")
+        if (key.length < 2) return 0
+
+        val address = place.address.replace(Regex("""\s+"""), "")
+        val name = place.name.replace(Regex("""\s+"""), "")
+        if (address.contains(key) || name.contains(key)) return 1
+        // 인접 동네의 실제 거리는 모른다. 명시된 구가 다른 경우에만 불일치로 판정한다.
+        val requestedDistrict = tokens.lastOrNull { it.endsWith("구") }
+        val addressDistrict = Regex("""[가-힣]{2,}구""").find(place.address)?.value
+        return if (requestedDistrict != null && addressDistrict != null && requestedDistrict != addressDistrict) -1 else 0
+    }
 
     // ── 기준별 채점 (전부 0.0~1.0) ───────────────────────────────────────────
 

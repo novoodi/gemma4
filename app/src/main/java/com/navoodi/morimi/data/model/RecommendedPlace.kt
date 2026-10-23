@@ -15,6 +15,7 @@ data class RecommendedPlace(
     // 카카오 검색 결과의 좌표(WGS84). 매칭된 검색 결과가 없거나 좌표가 깨졌으면 null — 지도 핀에서 빠진다
     val latitude: Double? = null,
     val longitude: Double? = null,
+    val category: String = "",    // 카카오 검색 결과의 업종 (추천 이유와 분리)
 ) {
     /** 지도에 찍을 수 있는 좌표. 둘 중 하나라도 없거나 범위 밖이면 null */
     val geoPoint: GeoPoint? get() = GeoPoint.of(latitude, longitude)

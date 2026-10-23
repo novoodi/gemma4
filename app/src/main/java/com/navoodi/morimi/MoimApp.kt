@@ -27,6 +27,8 @@ class MoimApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Firebase 설정 없이 UI만 확인하는 디버그 전용 프로세스.
+        if (BuildConfig.DEBUG && Application.getProcessName().endsWith(":report_preview")) return
         // 앱 시작 시 채널 미리 등록 — FcmService 기동 전에도 notify() 가능하도록
         FcmService.createNotificationChannel(this)
         reindexFeedbackEmbeddings()

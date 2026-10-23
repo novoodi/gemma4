@@ -46,6 +46,7 @@ fun PlaceMapView(
     focusedIndex: Int?,
     modifier: Modifier = Modifier,
     height: Dp = 220.dp,
+    showFallbackEntries: Boolean = true,
 ) {
     val plan = remember(places) { PlaceMapPlanner.plan(places, BuildConfig.KAKAO_MAP_JS_KEY) }
     // SDK가 실제로 실패하면 Ready → 대체 목록으로 내려간다(장소가 바뀌면 다시 시도)
@@ -63,7 +64,16 @@ fun PlaceMapView(
 
     when (shown) {
         PlaceMapState.Hidden -> Unit
-        is PlaceMapState.Fallback -> MapFallback(shown, frame.heightIn(max = height))
+        is PlaceMapState.Fallback -> if (showFallbackEntries) {
+            MapFallback(shown, frame.heightIn(max = height))
+        } else {
+            Text(
+                "🗺️ " + shown.reason.message + " · 장소별 카카오맵 링크는 아래 카드에서 확인하세요",
+                fontSize = 13.sp,
+                color = MoColors.textSecondary,
+                modifier = frame.padding(14.dp),
+            )
+        }
         is PlaceMapState.Ready -> Column(frame) {
             KakaoMapWebView(
                 html = shown.html,

@@ -145,4 +145,56 @@ class PlaceRankerTest {
         )
         ranked.forEach { assertTrue("점수 범위 이탈: ${it.score}", it.score in 0.0..1.0) }
     }
+
+    @Test
+    fun nearbyRestaurantOutranksFartherPreferredRestaurant() {
+        val ranked = PlaceRanker.rank(
+            places = listOf(
+                place("조용한 식당").copy(address = "서울 도봉구 마들로 916", category = "음식점 > 한식"),
+                place("가까운 식당").copy(address = "서울 마포구 망원로 87", category = "음식점 > 한식"),
+            ),
+            context = MeetingContext.MEAL,
+            ahp = ahp(MeetingContext.MEAL),
+            preferences = listOf("좋아요: 조용한"),
+            meetingLocation = "마포구",
+        )
+        assertEquals("가까운 식당", ranked.first().place.name)
+        assertTrue(ranked.first().relevanceTier > ranked.last().relevanceTier)
+    }
+
+    @Test
+    fun generatedReasonDoesNotReplaceVerifiedCategory() {
+        val ranked = PlaceRanker.rank(
+            places = listOf(
+                place("서울숲", "식당처럼 식사 모임에 적합").copy(category = "관광명소 > 공원"),
+                place("모임 장소", "대화하기 좋음").copy(category = "음식점 > 한식"),
+            ),
+            context = MeetingContext.MEAL,
+            ahp = ahp(MeetingContext.MEAL),
+            preferences = emptyList(),
+        )
+        assertEquals("모임 장소", ranked.first().place.name)
+        assertEquals(0.2, ranked.last().breakdown[AhpCriterion.PURPOSE_FIT]!!, 1e-9)
+    }
+
+    @Test
+    fun cityOnlyDoesNotImplyProximity() {
+        val place = place("서울 식당").copy(address = "서울 도봉구 마들로 916")
+        assertEquals(0, PlaceRanker.localityFit(place, "서울"))
+        assertEquals(1, PlaceRanker.localityFit(place, "도봉구"))
+    }
+
+    @Test
+    fun fullAddressUsesDistrictInsteadOfStreetNumber() {
+        val nearby = place("식당").copy(address = "서울 마포구 망원로 87")
+        val far = place("식당").copy(address = "서울 도봉구 마들로 916")
+        assertEquals(1, PlaceRanker.localityFit(nearby, "서울 마포구 망원로 87"))
+        assertEquals(-1, PlaceRanker.localityFit(far, "서울 마포구 망원로 87"))
+    }
+
+    @Test
+    fun neighborhoodAndDistrictAreBothConsidered() {
+        val far = place("식당").copy(address = "서울 도봉구 창동")
+        assertEquals(-1, PlaceRanker.localityFit(far, "서울 마포구 망원동"))
+    }
 }

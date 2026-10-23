@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,11 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -100,15 +94,8 @@ class AIReportViewModel(app: Application, savedStateHandle: SavedStateHandle) : 
     }
 }
 
-// ── Page types ────────────────────────────────────────────────────────────────
-
-private sealed interface CardPage {
-    data object Meeting : CardPage
-    data class Place(val index: Int) : CardPage
-    data object Activities : CardPage
-    data object ItemsToBring : CardPage
-    data object Finish : CardPage
-}
+// ── 화면 안의 세 정보 탭 ──────────────────────────────────────────────────────
+private val REPORT_TABS = listOf("장소", "요약", "날씨")
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
@@ -117,7 +104,43 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val isAddedToCalendar by viewModel.isAddedToCalendar.collectAsStateWithLifecycle()
     val events by CalendarRepository.events.collectAsStateWithLifecycle()
+    val goToCalendar: () -> Unit = {
+        navController.navigate(Screen.Calendar.route) {
+            popUpTo(navController.graph.id)
+            launchSingleTop = true
+        }
+    }
 
+    AIReportContent(
+        summary = summary,
+        isModelAvailable = viewModel.isModelAvailable,
+        roomId = viewModel.roomId,
+        events = events,
+        isAddedToCalendar = isAddedToCalendar,
+        onBack = { navController.popBackStack() },
+        onModelDownload = { navController.navigate(Screen.ModelDownload.route) },
+        onTogglePlace = viewModel::togglePlace,
+        onVote = { navController.navigate(Screen.Vote.createRoute(viewModel.roomId)) },
+        onAddToCalendar = viewModel::addToCalendar,
+        onGoToCalendar = goToCalendar,
+    )
+}
+
+@Composable
+internal fun AIReportContent(
+    summary: MeetingSummary?,
+    isModelAvailable: Boolean,
+    roomId: String,
+    events: List<CalendarEvent>,
+    isAddedToCalendar: Boolean,
+    onBack: () -> Unit,
+    onModelDownload: () -> Unit,
+    onTogglePlace: (RecommendedPlace) -> Unit,
+    onVote: () -> Unit,
+    onAddToCalendar: () -> Unit,
+    onGoToCalendar: () -> Unit,
+    initialPage: Int = 0,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -133,7 +156,7 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                 .padding(horizontal = 8.dp),
         ) {
             IconButton(
-                onClick = { navController.popBackStack() },
+                onClick = { onBack() },
                 modifier = Modifier.align(Alignment.CenterStart),
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "뒤로", tint = MoColors.textPrimary)
@@ -149,7 +172,7 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
         HorizontalDivider(color = MoColors.border)
 
         // Model unavailable banner
-        if (!viewModel.isModelAvailable) {
+        if (!isModelAvailable) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -165,7 +188,7 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
                     color = MoAmber600,
                 )
                 TextButton(
-                    onClick = { navController.navigate(Screen.ModelDownload.route) },
+                    onClick = { onModelDownload() },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
                     Text("다운로드", fontSize = 12.sp, color = MoColors.brand, fontWeight = FontWeight.Bold)
@@ -188,156 +211,174 @@ fun AIReportScreen(navController: NavController, viewModel: AIReportViewModel = 
             }
         } else {
             val s = summary!!
-            val pages: List<CardPage> = buildList {
-                add(CardPage.Meeting)
-                s.places.indices.forEach { add(CardPage.Place(it)) }
-                if (s.activities.isNotEmpty()) add(CardPage.Activities)
-                if (s.itemsToBring.isNotEmpty()) add(CardPage.ItemsToBring)
-                add(CardPage.Finish)
-            }
-            val pagerState = rememberPagerState(pageCount = { pages.size })
+            val pagerState = rememberPagerState(initialPage = initialPage.coerceIn(0, REPORT_TABS.lastIndex), pageCount = { REPORT_TABS.size })
+            val scope = rememberCoroutineScope()
 
-            // Dot indicator
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 10.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+            TabRow(
+                selectedTabIndex = pagerState.currentPage,
+                containerColor = MoColors.surfaceCard,
+                contentColor = MoColors.brand,
             ) {
-                pages.indices.forEach { i ->
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 3.dp)
-                            .size(if (pagerState.currentPage == i) 8.dp else 5.dp)
-                            .clip(CircleShape)
-                            .background(if (pagerState.currentPage == i) MoColors.brand else MoColors.borderStrong)
+                REPORT_TABS.forEachIndexed { index, title ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                        text = { Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) },
                     )
                 }
             }
-
-            // 지도 — 버튼 없이 항상 펼쳐 둔다. 장소 카드로 넘기면 그 장소 핀을 강조한다
-            val focusedPlace = (pages.getOrNull(pagerState.currentPage) as? CardPage.Place)?.index
-            PlaceMapView(
-                places = s.places,
-                focusedIndex = focusedPlace,
-                modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 10.dp),
+            Text(
+                "← 좌우로 밀어 장소 · 요약 · 날씨 보기 →",
+                fontSize = 11.sp,
+                color = MoColors.textTertiary,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                textAlign = TextAlign.Center,
             )
 
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp),
-                pageSpacing = 12.dp,
-            ) { pageIndex ->
-                when (val page = pages[pageIndex]) {
-                    CardPage.Meeting -> MeetingCard(
-                        summary = s,
-                        isAdded = isAddedToCalendar,
-                        onAddToCalendar = viewModel::addToCalendar,
-                    )
-                    is CardPage.Place -> PlaceCard(
-                        place = s.places[page.index],
-                        pinLabel = page.index + 1,
-                        roomId = viewModel.roomId,
-                        events = events,
-                        onToggle = viewModel::togglePlace,
-                    )
-                    CardPage.Activities -> ListCard(
-                        title = "🎉 추천 활동",
-                        items = s.activities,
-                    )
-                    CardPage.ItemsToBring -> ListCard(
-                        title = "🎒 챙겨갈 것",
-                        items = s.itemsToBring,
-                    )
-                    CardPage.Finish -> FinishCard(
-                        roomId = viewModel.roomId,
-                        events = events,
-                        navController = navController,
-                        onGoToCalendar = {
-                            // AIReport는 일회성 결과 화면 — 캘린더 이동은 탭 이동과 동일하게
-                            // 루트로 리셋한다(스택 보존 없음). saveState로 남긴 스택이 이후
-                            // 탭 복귀 때 분석 화면을 되살리는 부작용 방지 (goTab과 동일 정책).
-                            navController.navigate(Screen.Calendar.route) {
-                                popUpTo(navController.graph.id)
-                                launchSingleTop = true
+            ) { page ->
+                Column(
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    when (page) {
+                        0 -> {
+                            PlaceMapView(places = s.places, focusedIndex = null, showFallbackEntries = false)
+                            if (s.places.isEmpty()) {
+                                Text("추천 장소가 없습니다", color = MoColors.textTertiary, fontSize = 14.sp)
+                            } else {
+                                s.places.forEachIndexed { index, place ->
+                                    PlaceCard(
+                                        place = place,
+                                        pinLabel = index + 1,
+                                        roomId = roomId,
+                                        events = events,
+                                        onToggle = onTogglePlace,
+                                    )
+                                }
                             }
-                        },
-                    )
+                        }
+                        1 -> {
+                            MeetingCard(s)
+                            if (s.activities.isNotEmpty()) ListCard("🎉 추천 활동", s.activities)
+                            if (s.itemsToBring.isNotEmpty()) ListCard("🎒 챙겨갈 것", s.itemsToBring)
+                            OutlinedButton(
+                                onClick = { onVote() },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text("👍 그룹 투표 시작하기", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            OutlinedButton(
+                                onClick = onGoToCalendar,
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text("📅 캘린더에서 확인하기", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        else -> WeatherCard(s)
+                    }
+                }
+            }
+
+            ReportFooter(
+                isAdded = isAddedToCalendar,
+                onAddToCalendar = onAddToCalendar,
+                onGoToCalendar = onGoToCalendar,
+            )
+        }
+    }
+}
+
+// ── Card: 모임 요약 · 날씨 ──────────────────────────────────────────────────────
+
+@Composable
+private fun MeetingCard(summary: MeetingSummary) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MoColors.surfaceCard)
+            .border(1.dp, MoColors.border, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(GeminiIcon, contentDescription = null, tint = MoColors.brand, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("AI가 분석한 모임 정보", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MoColors.brand)
+        }
+        val rows = listOf(
+            Triple("📅", "날짜", MeetingDateDisplay.compact(summary.meetingDate.ifBlank { "미정" })),
+            Triple("📍", "장소", summary.location.ifBlank { "미정" }),
+            Triple("🎯", "요약", MeetingDateDisplay.compact(summary.summary).ifBlank { "분석 결과 없음" }),
+        )
+        rows.forEachIndexed { index, (icon, label, value) ->
+            if (index > 0) HorizontalDivider(color = MoColors.border)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(icon, fontSize = 16.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(label, fontSize = 12.sp, color = MoColors.textTertiary)
+                    Text(value, fontSize = 14.sp, color = MoColors.textPrimary, lineHeight = 22.sp)
                 }
             }
         }
     }
 }
 
-// ── Card: 모임 확인 ────────────────────────────────────────────────────────────
+@Composable
+private fun WeatherCard(summary: MeetingSummary) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MoColors.surfaceCard)
+            .border(1.dp, MoColors.border, RoundedCornerShape(16.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text("🌤️ 날씨", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MoColors.brand)
+        Text(
+            MeetingDateDisplay.compact(summary.meetingDate.ifBlank { "날짜 미정" }),
+            fontSize = 14.sp,
+            color = MoColors.textSecondary,
+        )
+        HorizontalDivider(color = MoColors.border)
+        Text(
+            MeetingDateDisplay.compact(summary.weather.ifBlank { "날씨 정보 없음" }),
+            fontSize = 14.sp,
+            color = MoColors.textPrimary,
+            lineHeight = 22.sp,
+        )
+    }
+}
 
 @Composable
-private fun MeetingCard(
-    summary: MeetingSummary,
+private fun ReportFooter(
     isAdded: Boolean,
     onAddToCalendar: () -> Unit,
+    onGoToCalendar: () -> Unit,
 ) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .fillMaxWidth()
+            .background(MoColors.surfaceCard)
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MoColors.surfaceCard)
-                .border(1.dp, MoColors.border, RoundedCornerShape(16.dp))
-                .padding(16.dp),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 14.dp),
-            ) {
-                Icon(GeminiIcon, contentDescription = null, tint = MoColors.brand, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("AI가 분석한 모임 정보", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MoColors.brand)
-            }
-            val rows = listOf(
-                Triple("📅", "날짜", summary.meetingDate.ifBlank { "미정" }),
-                Triple("📍", "장소", summary.location.ifBlank { "미정" }),
-                Triple("🎯", "요약", summary.summary.take(80).ifBlank { "분석 결과 없음" }),
-                Triple("🌤️", "날씨", summary.weather.ifBlank { "정보 없음" }),
-            )
-            rows.forEachIndexed { i, (icon, label, value) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(if (i < rows.size - 1) Modifier.padding(bottom = 10.dp) else Modifier),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(icon, fontSize = 16.sp)
-                    Column {
-                        Text(label, fontSize = 11.sp, color = MoColors.textTertiary, fontWeight = FontWeight.Medium)
-                        Spacer(Modifier.height(2.dp))
-                        Text(value, fontSize = 14.sp, color = MoColors.textPrimary, fontWeight = FontWeight.Medium)
-                    }
-                }
-                if (i < rows.size - 1) HorizontalDivider(color = MoColors.border, modifier = Modifier.padding(vertical = 5.dp))
-            }
-        }
-
-        OutlinedButton(
-            onClick = onAddToCalendar,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+        Button(
+            onClick = if (isAdded) onGoToCalendar else onAddToCalendar,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(12.dp),
-            enabled = !isAdded,
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = if (isAdded) MoColors.place else MoColors.brand,
-            ),
+            colors = ButtonDefaults.buttonColors(containerColor = MoColors.brand),
         ) {
             Text(
-                text = if (isAdded) "✓ 캘린더에 추가됨" else "📅 캘린더에 모임 추가",
-                fontSize = 14.sp,
+                if (isAdded) "✓ 캘린더에서 확인하기" else "📅 캘린더에 모임 추가",
+                fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
             )
         }
@@ -362,10 +403,7 @@ private fun PlaceCard(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 8.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(
@@ -462,12 +500,7 @@ private fun VerificationBadge(status: VerificationStatus) {
 
 @Composable
 private fun ListCard(title: String, items: List<String>) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 8.dp),
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -488,65 +521,3 @@ private fun ListCard(title: String, items: List<String>) {
         }
     }
 }
-
-// ── Card: 마무리 ──────────────────────────────────────────────────────────────
-
-@Composable
-private fun FinishCard(
-    roomId: String,
-    events: List<CalendarEvent>,
-    navController: NavController,
-    onGoToCalendar: () -> Unit,
-) {
-    val addedCount = events.count { it.roomId == roomId && it.placeName.isNotBlank() }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Brush.linearGradient(listOf(MoBlue50, MoBlue100)))
-                .border(1.dp, MoBlue100, RoundedCornerShape(16.dp))
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text("✅", fontSize = 40.sp)
-            Text("마무리", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MoColors.textPrimary)
-            Text(
-                text = if (addedCount > 0)
-                    "마음에 드는 장소 ${addedCount}곳을\n캘린더에 담았어요!"
-                else
-                    "마음에 드는 장소를\n캘린더에 담아보세요",
-                fontSize = 15.sp,
-                color = MoColors.textSecondary,
-                lineHeight = 24.sp,
-                textAlign = TextAlign.Center,
-            )
-        }
-
-        Button(
-            onClick = onGoToCalendar,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MoColors.brand),
-        ) {
-            Text("📅 캘린더에서 확인하기", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        }
-
-        OutlinedButton(
-            onClick = { navController.navigate(Screen.Vote.createRoute(roomId)) },
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(12.dp),
-        ) {
-            Text("👍 그룹 투표 시작하기", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        }
-    }
-}
-

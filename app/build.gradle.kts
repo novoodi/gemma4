@@ -5,7 +5,12 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
-    id("com.google.gms.google-services")
+    id("com.google.gms.google-services") apply false
+}
+
+// Firebase 설정 파일이 없는 개발 환경에서도 로컬 로직과 화면을 빌드한다.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
 
 // 외부 API 키(Gemini·카카오·기상청)는 APK에 넣지 않는다 — Firebase Functions 시크릿에만 존재하고
@@ -36,6 +41,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        if (!file("google-services.json").exists()) {
+            resValue("string", "default_web_client_id", "")
+        }
 
         // 카카오맵 JavaScript 키 — local.properties의 kakao.map.js.key (없으면 빈 값 → 지도 대체 표시)
         buildConfigField("String", "KAKAO_MAP_JS_KEY", "\"${localProp("kakao.map.js.key")}\"")
@@ -44,6 +52,13 @@ android {
     }
 
     buildTypes {
+        // 실제 앱 진입 경로를 검증하는 설치용 빌드. 샘플 미리보기 화면은 포함하지 않는다.
+        create("qa") {
+            isDebuggable = true
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("debug")
+        }
+
         release {
             isMinifyEnabled = true
             isShrinkResources = true

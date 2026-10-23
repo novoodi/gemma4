@@ -178,6 +178,7 @@ class AssistantOrchestrator(
         private fun RecommendedPlace.withKakao(k: KakaoPlace?): RecommendedPlace = if (k == null) this else copy(
             address = k.roadAddress.ifBlank { k.address },
             placeUrl = k.url,
+            category = k.category,
             latitude = k.latitude,
             longitude = k.longitude,
         )
@@ -504,6 +505,7 @@ class AssistantOrchestrator(
                 val ranked = PlaceRanker.rank(
                     places = verifiedSummary.places,
                     context = meetingContext,
+                    meetingLocation = sieved.slot(FrameSlot.WHERE),
                     ahp = learned.result,
                     preferences = profile?.preferences ?: emptyList(),
                     pastImpressions = impressions,
