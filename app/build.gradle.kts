@@ -48,7 +48,7 @@ android {
         // 카카오맵 JavaScript 키 — local.properties의 kakao.map.js.key (없으면 빈 값 → 지도 대체 표시)
         buildConfigField("String", "KAKAO_MAP_JS_KEY", "\"${localProp("kakao.map.js.key")}\"")
         // 지도 HTML의 출처(origin). 카카오 콘솔 [플랫폼 > Web 사이트 도메인]에 같은 값을 등록해야 한다
-        buildConfigField("String", "KAKAO_MAP_ORIGIN", "\"${localProp("kakao.map.origin", "http://localhost")}\"")
+        buildConfigField("String", "KAKAO_MAP_ORIGIN", "\"${localProp("kakao.map.origin", "https://localhost")}\"")
     }
 
     buildTypes {
