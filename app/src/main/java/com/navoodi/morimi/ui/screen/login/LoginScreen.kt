@@ -34,7 +34,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.navoodi.morimi.R
 import com.navoodi.morimi.ui.theme.*
@@ -189,13 +189,11 @@ fun LoginScreen(
 private suspend fun launchGoogleSignIn(context: Context, authViewModel: AuthViewModel) {
     Log.d(TAG, "▶ [1] CredentialManager getCredential 시작")
     val credentialManager = CredentialManager.create(context)
-    val googleIdOption = GetGoogleIdOption.Builder()
-        .setFilterByAuthorizedAccounts(false)
-        .setServerClientId(context.getString(R.string.default_web_client_id))
-        .setAutoSelectEnabled(false)
-        .build()
+    val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
+        context.getString(R.string.default_web_client_id)
+    ).build()
     val request = GetCredentialRequest.Builder()
-        .addCredentialOption(googleIdOption)
+        .addCredentialOption(signInWithGoogleOption)
         .build()
     try {
         val result = credentialManager.getCredential(context, request)
