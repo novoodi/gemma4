@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
+   API 30 이하 자동 백업 규칙. API 31+는 data_extraction_rules.xml이 적용된다.
    See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Room DB(채팅·성향 프로필·후기)는 기기 밖으로 나가지 않는다 — WAL 부속 파일 포함 -->
+    <exclude domain="database" path="moim_database" />
+    <exclude domain="database" path="moim_database-wal" />
+    <exclude domain="database" path="moim_database-shm" />
+    <!-- 온디바이스 모델 파일(수 GB) -->
+    <exclude domain="external" path="models" />
 </full-backup-content>

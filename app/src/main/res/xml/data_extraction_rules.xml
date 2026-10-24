@@ -1,19 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
+   API 31+ 백업·기기 이전 규칙.
    See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Room DB(채팅·성향 프로필·후기)는 기기 밖으로 나가지 않는다 — WAL 부속 파일 포함 -->
+        <exclude domain="database" path="moim_database" />
+        <exclude domain="database" path="moim_database-wal" />
+        <exclude domain="database" path="moim_database-shm" />
+        <!-- 온디바이스 모델 파일(수 GB) -->
+        <exclude domain="external" path="models" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="database" path="moim_database" />
+        <exclude domain="database" path="moim_database-wal" />
+        <exclude domain="database" path="moim_database-shm" />
+        <exclude domain="external" path="models" />
     </device-transfer>
-    -->
 </data-extraction-rules>
