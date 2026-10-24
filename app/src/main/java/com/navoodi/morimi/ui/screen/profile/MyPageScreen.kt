@@ -157,7 +157,7 @@ fun MyPageScreen(
                     ) {
                         Column {
                             Text("AI 모델 다운로드", fontFamily = Pretendard, fontSize = 15.sp, color = MoColors.brand, fontWeight = FontWeight.Medium)
-                            Text("약 2.6 GB · 샘플 AI 사용 중", fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textTertiary)
+                            Text("약 2.8 GB · 샘플 AI 사용 중", fontFamily = Pretendard, fontSize = 12.sp, color = MoColors.textTertiary)
                         }
                         Box(
                             modifier = Modifier
