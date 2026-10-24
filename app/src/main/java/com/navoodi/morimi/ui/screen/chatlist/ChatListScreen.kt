@@ -98,7 +98,8 @@ fun ChatListScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 22.dp, bottom = 96.dp),
+                .navigationBarsPadding()
+                .padding(end = 22.dp, bottom = 64.dp + 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.End,
         ) {
