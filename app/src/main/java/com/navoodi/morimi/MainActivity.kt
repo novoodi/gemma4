@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -20,6 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.navoodi.morimi.data.repository.FcmRepository
+import kotlinx.coroutines.launch
 import com.navoodi.morimi.navigation.Screen
 import com.navoodi.morimi.ui.components.TpTab
 import com.navoodi.morimi.ui.screen.ailoading.AILoadingScreen
@@ -170,6 +172,9 @@ class MainActivity : ComponentActivity() {
                     composable(Screen.Onboarding.route) {
                         OnboardingScreen(onDone = {
                             authViewModel.completeOnboarding()
+                            // 신규 가입자는 GoToHome 분기를 안 타므로 여기서 FCM 토큰 저장.
+                            // 화면 pop에 취소되지 않도록 Activity 스코프에서 실행.
+                            lifecycleScope.launch { FcmRepository.fetchAndSaveToken() }
                             navController.navigate(homeOrDownload()) {
                                 popUpTo(Screen.Onboarding.route) { inclusive = true }
                             }
