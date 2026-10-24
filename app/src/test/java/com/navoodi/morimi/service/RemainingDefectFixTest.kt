@@ -224,15 +224,36 @@ class RemainingDefectFixTest {
     }
 
     @Test
+    fun `날짜 칸 - 도구가 미정이면 정형화 슬롯으로 채운다`() {
+        val r = AgentFlow.run(dinner, ScriptedGemini.of(Gem.final(listOf("미미식당"))))
+        val s = r.success!!.summary
+        // 캘린더·홈 일정이 날짜 일치로 비교하므로 요일 없이 YYYY-MM-DD로 저장돼야 한다
+        assertTrue("날짜 칸이 YYYY-MM-DD가 아님: ${s.meetingDate}", Regex("""\d{4}-\d{2}-\d{2}""").matches(s.meetingDate))
+    }
+
+    @Test
+    fun `날짜 칸 - 일시 슬롯의 요일 표기는 떼고 미정은 그대로`() {
+        assertEquals("2026-10-25", AssistantOrchestrator.slotDate("2026-10-25 (일)"))
+        assertEquals("미정", AssistantOrchestrator.slotDate("미정"))
+    }
+
+    @Test
+    fun `날짜·장소 칸 - 도구 값이 있으면 도구 값 우선(기존 동작)`() {
+        assertEquals("2026-10-31", AssistantOrchestrator.toolOrSlot("2026-10-31", "2026-10-25"))
+        assertEquals("부산", AssistantOrchestrator.toolOrSlot("부산", "강남"))
+        assertEquals("미정", AssistantOrchestrator.toolOrSlot("미정", "미정"))
+    }
+
+    @Test
     fun `S6-4 경계 - 같은 시도의 다른 동네 가게는 통과(망원 모임 + 강남 가게 = 서울)`() {
         val msgs = listOf(msg("김민수", "토요일 망원동 저녁", 1), msg("이지영", "좋아", 2))
         assertTrue(AgentFlow.run(msgs, ScriptedGemini.of(Gem.final(listOf("미미식당")))).guardrails.first().passed)
     }
 
     @Test
-    fun `S6-4 정상 - 화면에 보이는 모임 장소(location)는 바꾸지 않는다`() {
+    fun `S6-4 정상 - 도구 미사용 시 화면의 모임 장소(location)도 대화 지역으로 채운다(2026-10-24 방침 변경)`() {
         val r = AgentFlow.run(dinner, ScriptedGemini.of(Gem.final(listOf("미미식당"))))
-        assertEquals("미정", r.success!!.summary.location)
+        assertEquals("강남", r.success!!.summary.location)
     }
 
     // ══ S4-9 지역 철회 ═══════════════════════════════════════════════════════

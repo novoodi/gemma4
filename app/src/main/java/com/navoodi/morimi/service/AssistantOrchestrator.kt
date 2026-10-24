@@ -136,16 +136,30 @@ class AssistantOrchestrator(
          * Guardrail 지역 검사에 쓸 도시(S6-4). 모델이 도구(getWeather·searchPlace)를 부르지 않으면
          * 도구 인자에서 온 도시가 "미정"이라 지역 검사가 통째로 생략됐다 — 그때는 대화에서 추출한
          * 지역 슬롯을 쓴다. 도구가 도시를 알려 줬으면 그쪽이 우선(기존 동작 유지). 둘 다 없으면 "미정".
-         * 화면에 보이는 모임 장소(MeetingSummary.location)는 바꾸지 않는다 — 검증에만 쓴다.
          */
-        internal fun guardrailCity(toolCity: String, sieveWhere: String): String {
+        internal fun guardrailCity(toolCity: String, sieveWhere: String): String =
+            toolOrSlot(toolCity, sieveWhere)
+
+        /**
+         * 도구 인자에서 온 값이 비었거나 "미정"이면 정형화 슬롯 값으로 대신한다. 도구 값이 있으면 그쪽 우선.
+         * 화면의 날짜·장소 칸(MeetingSummary.meetingDate/location)과 Guardrail 지역에 쓴다 —
+         * 날씨 조회 범위 밖이라 모델이 date="미정"으로 부르면 요약엔 날짜가 있는데 칸은 미정으로 뜨던 문제.
+         */
+        internal fun toolOrSlot(toolValue: String, slotValue: String): String {
             fun known(v: String) = v.isNotBlank() && v.trim() != SievedPrompt.UNSPECIFIED
             return when {
-                known(toolCity) -> toolCity
-                known(sieveWhere) -> sieveWhere.trim()
+                known(toolValue) -> toolValue
+                known(slotValue) -> slotValue.trim()
                 else -> SievedPrompt.UNSPECIFIED
             }
         }
+
+        /**
+         * 일시 슬롯("2026-10-25 (일)")에서 날짜만 꺼낸다 — 도구 날짜와 같은 YYYY-MM-DD로 저장해야
+         * 캘린더·홈 일정의 날짜 일치 비교에 걸린다(요일은 화면 표시에서 다시 붙는다). 날짜가 없으면 원문 그대로.
+         */
+        internal fun slotDate(whenSlot: String): String =
+            ISO_DATE.find(whenSlot)?.value ?: whenSlot
 
         internal fun toRecommendedPlace(
             geminiStr: String,
@@ -469,7 +483,11 @@ class AssistantOrchestrator(
                     // 남는 장소가 없으면 이번 시도는 실패 — 피드백을 안고 다시 추천받는다
                     if (gate.kept.isEmpty()) continue
                 }
-                val proposed = callResult.summary.copy(places = gate.kept)
+                val proposed = callResult.summary.copy(
+                    places = gate.kept,
+                    meetingDate = toolOrSlot(callResult.summary.meetingDate, slotDate(sieved.slot(FrameSlot.WHEN))),
+                    location = toolOrSlot(callResult.summary.location, sieved.slot(FrameSlot.WHERE)),
+                )
 
                 // 검증 1 — Guardrail: 추천 장소가 실제로 존재/영업하는가 (하드 게이트)
                 val guardrail = guardrailService.verify(
