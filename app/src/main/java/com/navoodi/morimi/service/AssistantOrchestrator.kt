@@ -389,7 +389,9 @@ class AssistantOrchestrator(
         // RAG: 이번 모임 요약과 의미적으로 유사한 과거 후기를 온디바이스 시맨틱 검색으로 회수.
         // 방 무관 — 이 사용자가 지난 모임들에서 남긴 취향이 새 톡방 추천에도 반영된다.
         // 피드백은 사용자 자유 텍스트(실명 가능) → 경계 통과 전 동일 PII 게이트 적용.
-        val retrieved = feedbackRetriever.retrieve(query = safeSummary, topK = 3)
+        val retrieved = runCatching { feedbackRetriever.retrieve(query = safeSummary, topK = 3) }
+            .onFailure { Log.w(TAG, "후기 검색 실패 — 후기 없이 진행", it) }
+            .getOrDefault(emptyList())
         // 불만 후기(별점 1~2)는 검색 점수와 무관하게 늘 회수한다 — 쿼리(익명 요약)에 장소명이 없어
         // 특정 장소에 대한 불만은 유사도 검색에 잘 안 걸린다(S5-8). 나간 멤버가 쓴 후기는 반영하지 않는다.
         val complaintEntries = runCatching { feedbackRetriever.complaints() }
